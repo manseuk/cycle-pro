@@ -6,9 +6,10 @@
     "node": ">=22.12.0"
   },
   "scripts": {
-    "dev": "pnpm supabase:start && pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
+    "dev": "pnpm supabase:start && pnpm dev:apps",
     "dev:services": "pnpm supabase:start",
-    "dev:apps": "pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
+    "dev:apps": "pnpm sync:local-env && pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
+    "sync:local-env": "node scripts/sync-local-supabase-env.mjs",
     "supabase:start": "supabase start",
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",

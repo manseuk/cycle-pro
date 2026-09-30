@@ -1,14 +1,22 @@
 import { useEffect, useState } from 'react'
 
 type ApiStatus = 'checking' | 'online' | 'offline'
+type SupabaseStatus = 'checking' | 'connected' | 'not-configured' | 'unavailable'
+
+type HealthResponse = {
+  status: 'ok'
+  dependencies: { supabase: Exclude<SupabaseStatus, 'checking'> }
+}
 
 const apiBaseUrl = import.meta.env.VITE_API_BASE_URL?.replace(/\/$/, '') ?? ''
 
 function App() {
   const [apiStatus, setApiStatus] = useState<ApiStatus>('checking')
+  const [supabaseStatus, setSupabaseStatus] = useState<SupabaseStatus>('checking')
 
   async function checkApi() {
     setApiStatus('checking')
+    setSupabaseStatus('checking')
 
     try {
       const healthUrl = apiBaseUrl
@@ -22,14 +30,22 @@ function App() {
         typeof result !== 'object' ||
         result === null ||
         !('status' in result) ||
-        result.status !== 'ok'
+        result.status !== 'ok' ||
+        !('dependencies' in result) ||
+        typeof result.dependencies !== 'object' ||
+        result.dependencies === null ||
+        !('supabase' in result.dependencies) ||
+        !['connected', 'not-configured', 'unavailable'].includes(String(result.dependencies.supabase))
       ) {
         throw new Error('API returned an unexpected health response')
       }
 
+      const health = result as HealthResponse
       setApiStatus('online')
+      setSupabaseStatus(health.dependencies.supabase)
     } catch {
       setApiStatus('offline')
+      setSupabaseStatus('unavailable')
     }
   }
 
@@ -37,11 +53,18 @@ function App() {
     void checkApi()
   }, [])
 
-  const statusText = {
-    checking: 'Checking API connection',
-    online: 'API connection is online',
-    offline: 'API connection is unavailable',
+  const apiStatusText = {
+    checking: 'Checking',
+    online: 'Online',
+    offline: 'Unavailable',
   }[apiStatus]
+
+  const supabaseStatusText = {
+    checking: 'Checking',
+    connected: 'Connected',
+    'not-configured': 'Not configured',
+    unavailable: 'Unavailable',
+  }[supabaseStatus]
 
   return (
     <main className="page-shell">
@@ -50,37 +73,32 @@ function App() {
           <span className="brand-mark" aria-hidden="true">C</span>
           <span>cycle<span className="brand-light">pro</span></span>
         </a>
-        <span className="topbar-note">A clearer view of your training</span>
+        <span className="topbar-note">Application status</span>
       </header>
 
-      <section className="hero" aria-labelledby="page-title">
-        <div className="hero-copy">
-          <p className="eyebrow">YOUR RIDING, IN CONTEXT</p>
-          <h1 id="page-title">Train with the<br /><em>whole picture.</em></h1>
-          <p className="intro">
-            A calm, clear place to bring your rides together and understand
-            where your training is taking you.
-          </p>
-          <div className="connection" aria-live="polite" aria-atomic="true">
-            <span className={`status-dot status-${apiStatus}`} aria-hidden="true" />
-            <span>{statusText}</span>
-            {apiStatus === 'offline' && (
-              <button className="retry-button" onClick={() => void checkApi()}>
-                Retry
-              </button>
-            )}
+      <section className="status-page" aria-labelledby="page-title">
+        <div className="page-heading">
+          <p className="eyebrow">CYCLING TRAINING</p>
+          <h1 id="page-title">Cycle Pro</h1>
+          <p className="intro">Application and local service health.</p>
+        </div>
+
+        <dl className="status-list" aria-live="polite" aria-atomic="true">
+          <div className="status-row">
+            <dt>Worker API</dt>
+            <dd><span className={`status-dot status-${apiStatus}`} aria-hidden="true" />{apiStatusText}</dd>
           </div>
-        </div>
-        <div className="hero-art" aria-hidden="true">
-          <div className="sun" />
-          <div className="ridge ridge-back" />
-          <div className="ridge ridge-front" />
-          <div className="road road-one" />
-          <div className="road road-two" />
-          <div className="ride-line" />
-          <span className="art-label">ONE RIDE AT A TIME</span>
-          <span className="art-index">01 / 04</span>
-        </div>
+          <div className="status-row">
+            <dt>Supabase</dt>
+            <dd><span className={`status-dot status-${supabaseStatus}`} aria-hidden="true" />{supabaseStatusText}</dd>
+          </div>
+        </dl>
+
+        {apiStatus === 'offline' || supabaseStatus === 'unavailable' ? (
+          <button className="retry-button" onClick={() => void checkApi()}>
+            Retry connection check
+          </button>
+        ) : null}
       </section>
 
       <footer className="footer">

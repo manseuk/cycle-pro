@@ -43,7 +43,7 @@ jobs:
         env:
           SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
         run: |
-          if find supabase/migrations -maxdepth 1 -name '*.sql' -print -quit | grep -q .; then
+          if [ -d supabase/migrations ] && find supabase/migrations -maxdepth 1 -name '*.sql' -print -quit | grep -q .; then
             if [ -z "$SUPABASE_DB_URL" ]; then
               echo "Set the SUPABASE_DB_URL secret before deploying database migrations."
               exit 1
@@ -65,6 +65,18 @@ jobs:
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
         run: |
-          pnpm --filter @cycle-pro/api exec wrangler pages deploy ../../apps/web/dist --project-name cycle-pro --branch main
-          pnpm --filter @cycle-pro/api deploy
+          for setting in SUPABASE_URL SUPABASE_ANON_KEY FRONTEND_ORIGIN; do
+            if [ -z "${!setting}" ]; then
+              echo "Set the $setting repository variable before deploying the Worker."
+              exit 1
+            fi
+          done
+          pnpm --filter @cycle-pro/web exec wrangler pages deploy dist --project-name cycle-pro --branch main
+          pnpm --filter @cycle-pro/api exec wrangler deploy \
+            --var "SUPABASE_URL:$SUPABASE_URL" \
+            --var "SUPABASE_ANON_KEY:$SUPABASE_ANON_KEY" \
+            --var "FRONTEND_ORIGIN:$FRONTEND_ORIGIN"
