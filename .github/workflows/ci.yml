@@ -1,0 +1,70 @@
+name: CI and deploy
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm typecheck
+      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm test:e2e
+
+  deploy:
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    needs: verify
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 12.4.2
+      - uses: actions/setup-node@v4
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: Apply Supabase migrations
+        env:
+          SUPABASE_DB_URL: ${{ secrets.SUPABASE_DB_URL }}
+        run: |
+          if find supabase/migrations -maxdepth 1 -name '*.sql' -print -quit | grep -q .; then
+            if [ -z "$SUPABASE_DB_URL" ]; then
+              echo "Set the SUPABASE_DB_URL secret before deploying database migrations."
+              exit 1
+            fi
+            pnpm exec supabase db push --db-url "$SUPABASE_DB_URL" --yes
+          else
+            echo "No Supabase migrations to apply."
+          fi
+      - name: Build frontend
+        env:
+          VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+        run: |
+          if [ -z "$VITE_API_BASE_URL" ]; then
+            echo "Set the API_BASE_URL repository variable to the deployed Worker URL."
+            exit 1
+          fi
+          pnpm --filter @cycle-pro/web build
+      - name: Deploy frontend and Worker
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          pnpm --filter @cycle-pro/api exec wrangler pages deploy ../../apps/web/dist --project-name cycle-pro --branch main
+          pnpm --filter @cycle-pro/api deploy

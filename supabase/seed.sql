@@ -1,0 +1,1 @@
+-- Add deterministic local development data here when the first application schema is introduced.

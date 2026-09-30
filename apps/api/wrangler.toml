@@ -1,0 +1,9 @@
+name = "cycle-pro-api"
+main = "src/index.ts"
+compatibility_date = "2026-09-30"
+
+[vars]
+FRONTEND_ORIGIN = "https://cycle-pro.pages.dev"
+
+# Local development uses the Supabase stack started with `pnpm supabase:start`.
+# Add local-only credentials to .dev.vars; never commit them.

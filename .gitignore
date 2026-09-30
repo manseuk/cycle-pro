@@ -1,1 +1,10 @@
+node_modules/
+dist/
+.wrangler/
+.dev.vars
 .aider*
+playwright-report/
+test-results/
+*.tsbuildinfo
+supabase/.branches/
+supabase/.temp/

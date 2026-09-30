@@ -1,0 +1,26 @@
+{
+  "name": "cycle-pro",
+  "private": true,
+  "packageManager": "pnpm@12.4.2",
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "dev": "pnpm supabase:start && pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
+    "dev:services": "pnpm supabase:start",
+    "dev:apps": "pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
+    "supabase:start": "supabase start",
+    "supabase:stop": "supabase stop",
+    "supabase:reset": "supabase db reset",
+    "typecheck": "pnpm --recursive typecheck && tsc --noEmit -p tsconfig.e2e.json",
+    "test:e2e": "playwright test",
+    "test": "pnpm test:e2e",
+    "check": "pnpm typecheck && pnpm test"
+  },
+  "devDependencies": {
+    "@playwright/test": "1.63.0",
+    "@types/node": "26.6.3",
+    "supabase": "2.118.0",
+    "typescript": "7.0.2"
+  }
+}
