@@ -1,6 +1,5 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createClient, type Session } from '@supabase/supabase-js'
-import { parseCyclingRide } from './fit-import'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -245,6 +244,7 @@ function App() {
       try {
         if (file.size === 0) throw new Error('This file is empty.')
         if (file.size > 20 * 1024 * 1024) throw new Error('This FIT file is too large. The maximum size is 20 MB.')
+        const { parseCyclingRide } = await import('./fit-import')
         const fileBytes = await file.arrayBuffer()
         const [{ ride }, digest] = await Promise.all([
           parseCyclingRide(fileBytes, file.name),
