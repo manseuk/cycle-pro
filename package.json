@@ -10,7 +10,7 @@
     "dev:services": "pnpm supabase:start",
     "dev:apps": "pnpm sync:local-env && pnpm --parallel --filter @cycle-pro/web --filter @cycle-pro/api dev",
     "sync:local-env": "node scripts/sync-local-supabase-env.mjs",
-    "supabase:start": "supabase start",
+    "supabase:start": "supabase start && supabase migration up --local",
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
     "typecheck": "pnpm --recursive typecheck && tsc --noEmit -p tsconfig.e2e.json",

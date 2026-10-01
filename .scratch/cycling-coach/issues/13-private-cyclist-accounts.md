@@ -4,11 +4,11 @@
 
 **Blocked by:** 12: Application foundation and local workflow.
 
-**Status:** ready-for-agent
+**Status:** ready-for-human
 
-- [ ] A Cyclist can register and sign in with email and password using Supabase Auth.
-- [ ] Email verification and password reset work through the configured auth flow.
-- [ ] Two Cyclists can use separate accounts without reading or modifying one another's records through the application.
-- [ ] Row Level Security and authenticated access enforce Cyclist ownership for application data.
-- [ ] A Cyclist can delete their account only after clear confirmation; associated personal records are removed.
-- [ ] Signed-out users cannot access authenticated Cyclist pages or data.
+- [x] A Cyclist can register and sign in with email and password using Supabase Auth.
+- [x] Email verification and password reset work through the configured auth flow.
+- [x] Two Cyclists can use separate accounts without reading or modifying one another's records through the application.
+- [x] Row Level Security and authenticated access enforce Cyclist ownership for application data.
+- [x] A Cyclist can delete their account only after clear confirmation; associated personal records are removed.
+- [x] Signed-out users cannot access authenticated Cyclist pages or data.

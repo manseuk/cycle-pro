@@ -92,6 +92,40 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
 })
 
+test('Cyclist can create and edit one Primary active goal from a template', async ({ page }) => {
+  const email = `goal-cyclist-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-goal-123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByRole('heading', { name: 'Your training goal' })).toBeVisible()
+  await expect(page.getByText('You do not have a Primary active goal yet.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Set a goal' }).click()
+  await page.getByLabel('Start from a template').selectOption('event-century')
+  await expect(page.getByLabel('Goal type')).toHaveValue('event')
+  await page.getByLabel('Goal name').fill('Coast to Coast 100')
+  await page.getByLabel('Event date').fill('2027-06-12')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByText('Coast to Coast 100')).toBeVisible()
+  await expect(page.getByText('Complete the event')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit goal' }).click()
+  await page.getByLabel('Goal type').selectOption('general-fitness')
+  await page.getByLabel('Start from a template').selectOption('fitness-frequency')
+  await page.getByRole('spinbutton', { name: 'Rides per week' }).fill('3')
+  await page.getByLabel('FTP target (optional)').fill('250')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByText('3 rides per week')).toBeVisible()
+  await expect(page.getByText('FTP target: 250 W')).toBeVisible()
+
+  await page.reload()
+  await expect(page.getByText('3 rides per week')).toBeVisible()
+  await expect(page.getByRole('button', { name: 'Edit goal' })).toHaveCount(1)
+})
+
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
@@ -126,12 +160,40 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
     expect(secondRowsResponse.ok).toBe(true)
     expect(secondRows.map(({ id }) => id)).toEqual([second.id])
 
+    const goalCreateResponse = await fetch(`${url}/rest/v1/training_goals`, {
+      method: 'POST',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({
+        cyclist_id: first.id,
+        goal_type: 'event',
+        name: 'Private event goal',
+        event_date: '2027-06-12',
+        event_outcome: 'complete',
+      }),
+    })
+    expect(goalCreateResponse.ok).toBe(true)
+    const [privateGoal] = await goalCreateResponse.json() as Array<{ id: string; name: string }>
+    const secondGoalResponse = await fetch(`${url}/rest/v1/training_goals?select=id,name`, {
+      headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}` },
+    })
+    expect(await secondGoalResponse.json()).toEqual([])
+
     const modification = await fetch(`${url}/rest/v1/cyclists?id=eq.${second.id}`, {
       method: 'PATCH',
       headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
       body: JSON.stringify({ id: first.id }),
     })
     expect(modification.ok).toBe(false)
+
+    await fetch(`${url}/rest/v1/training_goals?id=eq.${privateGoal.id}`, {
+      method: 'PATCH',
+      headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}`, 'content-type': 'application/json', prefer: 'return=minimal' },
+      body: JSON.stringify({ name: 'Changed by another Cyclist' }),
+    })
+    const verifiedGoalResponse = await fetch(`${url}/rest/v1/training_goals?id=eq.${privateGoal.id}&select=name`, {
+      headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` },
+    })
+    expect(await verifiedGoalResponse.json()).toEqual([{ name: 'Private event goal' }])
   } finally {
     for (const user of [first, second]) {
       if (user) await fetch(`${url}/auth/v1/admin/users/${user.id}`, {

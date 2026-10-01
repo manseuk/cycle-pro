@@ -72,6 +72,20 @@ button, a { font: inherit; }
 .account-links { display: flex; justify-content: space-between; gap: 14px; }
 .account-card .danger-button { border-color: #a24335; color: #a24335; background: transparent; }
 .form-message { margin-top: 18px; color: #32654d; font-size: 13px; line-height: 1.5; }
+.goal-section { margin-top: 42px; padding-top: 27px; border-top: 1px solid #d9dbd1; }
+.goal-section h2 { margin: 0 0 12px; color: #19352f; font-family: Georgia, "Times New Roman", serif; font-size: 27px; font-weight: 500; letter-spacing: -.5px; }
+.goal-card { display: grid; gap: 8px; margin: 17px 0; padding: 17px; border: 1px solid #d9dbd1; border-radius: 6px; background: #fffefa; color: #4d5e54; font-size: 13px; line-height: 1.5; }
+.goal-card p, .goal-card h3 { margin: 0; }
+.goal-card h3 { color: #19352f; font-size: 17px; font-weight: 600; }
+.goal-kind { color: #66836f; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 10px; letter-spacing: .5px; text-transform: uppercase; }
+.goal-form { display: grid; gap: 15px; margin-top: 20px; padding-top: 18px; border-top: 1px solid #e3e4dc; }
+.goal-form label { display: grid; gap: 7px; color: #4d5e54; font-size: 12px; }
+.goal-form input, .goal-form select { min-height: 42px; width: 100%; border: 1px solid #cdd3c9; border-radius: 5px; padding: 0 11px; color: #19352f; background: #fffefa; font: inherit; }
+.goal-form button, .goal-section > button, .goal-card button { min-height: 40px; border: 1px solid #32654d; border-radius: 5px; padding: 9px 12px; color: white; background: #32654d; font-size: 13px; cursor: pointer; }
+.goal-form button:disabled { opacity: .6; cursor: wait; }
+.goal-form .text-button { min-height: auto; border: 0; padding: 0; color: #32654d; background: transparent; text-align: left; text-decoration: underline; }
+.goal-actions { display: flex; align-items: center; gap: 18px; }
+.goal-help { margin: -5px 0 0; color: #6d7970; font-size: 12px; }
 
 .eyebrow {
   margin: 0 0 15px;
