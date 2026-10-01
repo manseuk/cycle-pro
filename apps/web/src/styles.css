@@ -110,6 +110,21 @@ button, a { font: inherit; }
 .calendar-month-controls h3 { min-width: 160px; margin: 0; color: #19352f; font-size: 16px; text-align: center; }
 .calendar-month-controls button { width: 36px; padding: 0; border: 1px solid #d9dbd1; font-size: 24px; line-height: 1; }
 .calendar-today { border: 1px solid #d9dbd1; font-size: 12px; }
+.calendar-day-planned { display: block; margin-top: 3px; color: #7a5b20; font-size: 10px; }
+.planned-item { border-color: #d8c89a; background: #fffaf0; }
+.planned-workout-mark { display: grid; width: 25px; height: 25px; place-items: center; border: 1px solid #b49750; border-radius: 50%; color: #806323; font-size: 16px; }
+.planned-detail { border-color: #d8c89a; background: #fffaf0; }
+.suggestion-card { display: grid; gap: 9px; margin: 17px 0; padding: 18px; border: 1px solid #b9cbb8; border-left: 4px solid #66836f; border-radius: 6px; background: #fffefa; color: #4d5e54; font-size: 14px; line-height: 1.5; }
+.suggestion-card h3, .suggestion-card p { margin: 0; }
+.suggestion-card h3 { color: #19352f; font-size: 21px; }
+.suggestion-card a { color: #32654d; }
+.assessment-card { border-left-color: #b49750; }
+.suggestion-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 14px; margin-top: 8px; }
+.suggestion-actions button:first-child { min-height: 40px; border: 1px solid #32654d; border-radius: 5px; padding: 9px 12px; color: #fff; background: #32654d; cursor: pointer; }
+.suggestion-actions .text-button { border: 0; padding: 5px 0; color: #32654d; background: transparent; text-decoration: underline; cursor: pointer; }
+.suggestion-actions button:disabled { opacity: .6; cursor: wait; }
+.suggestion-abstention { margin: 17px 0; border-left: 3px solid #b49750; padding: 10px 13px; color: #4d5e54; background: #fffaf0; line-height: 1.5; }
+.suggestion-state { font-weight: 600; color: #32654d; }
 .calendar-weekdays, .calendar-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
 .calendar-weekdays { border: 1px solid #d9dbd1; border-bottom: 0; border-radius: 6px 6px 0 0; background: #f2f3eb; }
 .calendar-weekdays span { padding: 9px 5px; color: #637166; font-size: 11px; text-align: center; }

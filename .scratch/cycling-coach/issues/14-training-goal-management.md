@@ -11,8 +11,8 @@
 - [x] A Cyclist can start from editable templates or enter a custom goal.
 - [x] A Cyclist can edit the Primary active goal and has no more than one active primary goal at a time.
 - [x] Goal data is private to its owning Cyclist.
-- [ ] A Cyclist can use ride-import functionality before setting a goal; personalized workout suggestions remain unavailable until a goal exists.
+- [x] A Cyclist can use ride-import functionality before setting a goal; personalized workout suggestions remain unavailable until a goal exists.
 
 ## Comments
 
-- Goal editing is implemented and covered by the browser journey. The final acceptance item remains pending until ride import (ticket 15) and personalized suggestions (ticket 18) are available to verify together.
+- Goal editing and ride import before goal setup are covered by browser journeys. Ticket 18 verifies that a Cyclist without a goal sees an explanation instead of a personalized suggestion.

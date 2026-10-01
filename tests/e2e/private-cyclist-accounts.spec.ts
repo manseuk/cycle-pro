@@ -258,6 +258,83 @@ test('Cyclist manages dated FTP and daily recovery, and sees power load update w
   await expect(page.getByText(/No power load trend yet/)).toBeVisible()
 })
 
+test('Cyclist waits for a goal, then can skip the optional FTP setup assessment', async ({ page }) => {
+  const email = `suggestion-setup-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-suggest-123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByRole('heading', { name: 'Today’s workout suggestion' })).toBeVisible()
+  await expect(page.getByText('Set a Primary active goal to get a personalized workout suggestion.')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Optional Zwift Ramp Test FTP assessment' })).toHaveCount(0)
+
+  await page.getByRole('button', { name: 'Set a goal' }).click()
+  await page.getByLabel('Goal name').fill('Autumn sportive')
+  await page.getByLabel('Event date').fill('2027-06-12')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByRole('heading', { name: 'Optional Zwift Ramp Test FTP assessment' })).toBeVisible()
+  await expect(page.getByText(/manual FTP entry remains available/i)).toHaveCount(0)
+  await expect(page.getByText(/record an FTP from another assessment method/)).toBeVisible()
+  await page.getByRole('button', { name: 'Skip today' }).click()
+  await expect(page.getByText('Skipped · not added to your calendar')).toBeVisible()
+  await expect(page.getByText(/No completed Rides or planned workouts on this date/)).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Skipped · not added to your calendar')).toBeVisible()
+  await expect(page.getByLabel('FTP in watts')).toBeVisible()
+})
+
+test('Cyclist gets one explained workout, accepts it into the calendar, and illness suppresses an unaccepted assessment', async ({ page }) => {
+  const email = `suggestion-workout-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-suggest-456')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+
+  await page.getByLabel('FTP in watts').fill('250')
+  await page.getByLabel('FTP effective date').fill('2026-08-01')
+  await page.getByRole('button', { name: 'Save FTP' }).click()
+  await expect(page.getByText(/250 W · Aug 1, 2026/)).toBeVisible()
+  const input = page.getByLabel('FIT files')
+  await input.setInputFiles({ name: 'road-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/road-ride.fit') })
+  await page.getByRole('button', { name: 'Import 1 FIT file' }).click()
+  await expect(page.getByRole('heading', { name: 'road-ride' })).toBeVisible()
+  await page.getByRole('button', { name: 'Set a goal' }).click()
+  await page.getByLabel('Goal name').fill('Autumn sportive')
+  await page.getByLabel('Event date').fill('2027-06-12')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+
+  await expect(page.getByRole('heading', { name: 'Steady endurance ride' })).toBeVisible()
+  await expect(page.getByText(/Autumn sportive event on 2027-06-12 is the current goal/)).toBeVisible()
+  await expect(page.getByText(/recent relative load trends are CTL .* ATL .* TSB/)).toBeVisible()
+  await page.getByRole('button', { name: 'Accept and add to calendar' }).click()
+  await expect(page.getByText('Accepted · planned on your calendar')).toBeVisible()
+  await expect(page.getByText('Planned workout · 60 min')).toBeVisible()
+  await page.reload()
+  await expect(page.getByText('Accepted · planned on your calendar')).toBeVisible()
+  await expect(page.getByText('Planned workout · 60 min')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Sign out' }).click()
+  const illEmail = `suggestion-ill-${Date.now()}@example.test`
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(illEmail)
+  await page.getByLabel('Password').fill('CyclePro-suggest-789')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(illEmail, 'signup'))
+  await page.getByLabel('Illness or injury today').check()
+  await page.getByRole('button', { name: 'Save today’s check-in' }).click()
+  await expect(page.getByText(/illness or injury reported/)).toBeVisible()
+  await page.getByRole('button', { name: 'Set a goal' }).click()
+  await page.getByLabel('Goal name').fill('Recovery block')
+  await page.getByLabel('Event date').fill('2027-06-12')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByText(/Workout intensity and the FTP assessment are withheld today/)).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Optional Zwift Ramp Test FTP assessment' })).toHaveCount(0)
+})
+
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
@@ -363,6 +440,7 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
     for (const [table, values] of [
       ['ftp_records', { ftp_watts: 250, set_on: '2026-08-01' }],
       ['daily_recovery_checkins', { checkin_date: '2026-08-12', perceived_recovery: 2, illness_or_injury: true }],
+      ['workout_suggestions', { suggestion_date: '2026-08-12', suggestion_type: 'workout', workout_type: 'Private planned ride', duration_minutes: 60, intensity_target: 'Easy', explanation: 'Private goal and load explanation.', status: 'accepted' }],
     ] as const) {
       const createResponse = await fetch(`${url}/rest/v1/${table}`, {
         method: 'POST',

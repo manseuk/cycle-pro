@@ -18,6 +18,7 @@ type Props = {
   cyclistId: string
   rides: Ride[]
   timeZone: string
+  onRecoverySaved: () => void
 }
 
 const recoveryLabels: Record<number, string> = {
@@ -41,7 +42,7 @@ function chartPoints(values: number[], maximum: number) {
   }).join(' ')
 }
 
-export function TrainingLoadSection({ client, cyclistId, rides, timeZone }: Props) {
+export function TrainingLoadSection({ client, cyclistId, rides, timeZone, onRecoverySaved }: Props) {
   const today = calendarDateKey(new Date(), timeZone)
   const [ftpRecords, setFtpRecords] = useState<FtpRecord[]>([])
   const [ftpWatts, setFtpWatts] = useState('')
@@ -117,6 +118,7 @@ export function TrainingLoadSection({ client, cyclistId, rides, timeZone }: Prop
     else {
       setCheckin(data as RecoveryCheckin)
       setCheckinMessage('Today’s recovery check-in saved.')
+      onRecoverySaved()
     }
     setSaving(false)
   }
