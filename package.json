@@ -14,7 +14,7 @@
     "supabase:stop": "supabase stop",
     "supabase:reset": "supabase db reset",
     "typecheck": "pnpm --recursive typecheck && tsc --noEmit -p tsconfig.e2e.json",
-    "test:e2e": "playwright test",
+    "test:e2e": "pnpm supabase:start && pnpm sync:local-env && playwright test",
     "test": "pnpm test:e2e",
     "check": "pnpm typecheck && pnpm test"
   },

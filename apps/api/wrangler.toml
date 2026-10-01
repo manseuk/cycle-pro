@@ -3,7 +3,7 @@ main = "src/index.ts"
 compatibility_date = "2026-09-30"
 
 [vars]
-FRONTEND_ORIGIN = "https://cycle-pro.pages.dev"
+FRONTEND_ORIGIN = "http://127.0.0.1:5173"
 
 # Local development uses the Supabase stack started with `pnpm supabase:start`.
 # Add local-only credentials to .dev.vars; never commit them.

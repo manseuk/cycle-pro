@@ -55,9 +55,11 @@ jobs:
       - name: Build frontend
         env:
           VITE_API_BASE_URL: ${{ vars.API_BASE_URL }}
+          VITE_SUPABASE_URL: ${{ vars.SUPABASE_URL }}
+          VITE_SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
         run: |
-          if [ -z "$VITE_API_BASE_URL" ]; then
-            echo "Set the API_BASE_URL repository variable to the deployed Worker URL."
+          if [ -z "$VITE_API_BASE_URL" ] || [ -z "$VITE_SUPABASE_URL" ] || [ -z "$VITE_SUPABASE_ANON_KEY" ]; then
+            echo "Set API_BASE_URL, SUPABASE_URL, and SUPABASE_ANON_KEY repository variables before deploying."
             exit 1
           fi
           pnpm --filter @cycle-pro/web build
@@ -67,9 +69,10 @@ jobs:
           CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
           SUPABASE_URL: ${{ vars.SUPABASE_URL }}
           SUPABASE_ANON_KEY: ${{ vars.SUPABASE_ANON_KEY }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
           FRONTEND_ORIGIN: ${{ vars.FRONTEND_ORIGIN }}
         run: |
-          for setting in SUPABASE_URL SUPABASE_ANON_KEY FRONTEND_ORIGIN; do
+          for setting in SUPABASE_URL SUPABASE_ANON_KEY FRONTEND_ORIGIN SUPABASE_SERVICE_ROLE_KEY; do
             if [ -z "${!setting}" ]; then
               echo "Set the $setting repository variable before deploying the Worker."
               exit 1
@@ -80,3 +83,4 @@ jobs:
             --var "SUPABASE_URL:$SUPABASE_URL" \
             --var "SUPABASE_ANON_KEY:$SUPABASE_ANON_KEY" \
             --var "FRONTEND_ORIGIN:$FRONTEND_ORIGIN"
+          printf '%s' "$SUPABASE_SERVICE_ROLE_KEY" | pnpm --filter @cycle-pro/api exec wrangler secret put SUPABASE_SERVICE_ROLE_KEY

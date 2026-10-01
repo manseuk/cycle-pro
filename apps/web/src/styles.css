@@ -55,11 +55,23 @@ button, a { font: inherit; }
 .brand-light { color: #779183; font-weight: 400; }
 .topbar-note { color: #737c72; font-size: 12px; }
 
-.status-page {
+.status-page, .account-page {
   width: min(500px, 100%);
   margin: auto;
   padding: 76px 0 100px;
 }
+
+.account-card, .account-form { display: grid; gap: 16px; }
+.account-card { border-top: 1px solid #d9dbd1; padding-top: 20px; color: #4d5e54; font-size: 14px; line-height: 1.6; }
+.account-card p { margin: 0; }
+.account-form label { display: grid; gap: 7px; color: #4d5e54; font-size: 12px; }
+.account-form input { min-height: 42px; border: 1px solid #cdd3c9; border-radius: 5px; padding: 0 11px; color: #19352f; background: #fffefa; font: inherit; }
+.account-form button, .account-card button { min-height: 40px; border: 1px solid #32654d; border-radius: 5px; padding: 9px 12px; color: white; background: #32654d; font-size: 13px; cursor: pointer; }
+.account-form button:disabled, .account-card button:disabled { opacity: .6; cursor: wait; }
+.account-form .text-button { min-height: auto; border: 0; padding: 0; color: #32654d; background: transparent; text-align: left; text-decoration: underline; }
+.account-links { display: flex; justify-content: space-between; gap: 14px; }
+.account-card .danger-button { border-color: #a24335; color: #a24335; background: transparent; }
+.form-message { margin-top: 18px; color: #32654d; font-size: 13px; line-height: 1.5; }
 
 .eyebrow {
   margin: 0 0 15px;
@@ -115,7 +127,7 @@ h1 {
 }
 
 .retry-button:hover { background: #e8eee5; }
-.retry-button:focus-visible, .brand:focus-visible { outline: 2px solid #3c7557; outline-offset: 4px; }
+.retry-button:focus-visible, .brand:focus-visible, .account-form button:focus-visible, .account-card button:focus-visible, .account-form input:focus-visible { outline: 2px solid #3c7557; outline-offset: 3px; }
 
 .footer {
   min-height: 62px;
