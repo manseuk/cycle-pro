@@ -14,7 +14,7 @@
 - [x] The Ride timestamp is preserved, and the Cyclist's selected calendar time zone is saved for display and date grouping.
 - [x] After successful import, the original FIT file is discarded; parsed ride data remains available to the Cyclist.
 - [x] A Cyclist can edit Ride notes but cannot edit recorded sensor measurements.
-- [ ] A Cyclist can delete a Ride, and derived training data is recalculated after deletion.
+- [x] A Cyclist can delete a Ride, and derived training data is recalculated after deletion.
 - [x] A Cyclist can only import and manage their own Rides.
 - [x] Representative FIT parsing is measured against the Cloudflare Worker Free CPU limit, and retained parsed data is measured against the Supabase Free database quota.
 
@@ -22,4 +22,4 @@
 
 - 2026-10-01: Implemented the import and Ride management flow. The provided 1.08 MB sample (12,702 records) took 98.91 ms to parse locally, roughly ten times the Workers Free 10 ms CPU limit. This is a local parser wall-time comparison, not a Cloudflare production CPU trace; FIT decoding therefore runs in the browser and the Worker receives only compact parsed data and its SHA-256 hash. The Worker uses the authenticated session to select the Cyclist and a server-only service role to create the Ride. Authenticated clients can update notes and delete their own Rides, but cannot insert Rides or change sensor fields.
 - 2026-10-01: Measured `pg_column_size` on 6 local Ride rows: 187-byte average, 200-byte maximum. This is tuple size, excluding indexes and general database overhead. Supabase Free projects have a 500 MB database-size quota.
-- 2026-10-01: Ride deletion is implemented, but derived training data does not exist yet. Recalculation remains pending the training-load/suggestion tickets that introduce derived data.
+- 2026-10-01: Ticket 17 calculates power-load trends directly from current Rides and dated FTP history, so deleting a Ride updates the displayed CTL/ATL/TSB immediately. This closes the recalculation criterion without persisting stale derived rows.

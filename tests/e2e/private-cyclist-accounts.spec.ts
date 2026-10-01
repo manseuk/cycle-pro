@@ -214,6 +214,50 @@ test('Cyclist sees completed Rides on the calendar by local date and can open an
   await expect(page.getByRole('button', { name: /road-ride.*Completed Ride/ })).toHaveCount(0)
 })
 
+test('Cyclist manages dated FTP and daily recovery, and sees power load update when a Ride is deleted', async ({ page }) => {
+  const email = `load-cyclist-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-load-123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByRole('heading', { name: 'Training load and recovery' })).toBeVisible()
+  await expect(page.getByText(/No power load trend yet/)).toBeVisible()
+
+  await page.getByLabel('FTP in watts').fill('250')
+  await page.getByLabel('FTP effective date').fill('2026-08-01')
+  await page.getByRole('button', { name: 'Save FTP' }).click()
+  await expect(page.getByText(/250 W · Aug 1, 2026/)).toBeVisible()
+  await page.getByLabel('FTP in watts').fill('255')
+  await page.getByRole('button', { name: 'Save FTP' }).click()
+  await expect(page.getByText(/255 W · Aug 1, 2026/)).toBeVisible()
+  await expect(page.getByText(/250 W · Aug 1, 2026/)).toHaveCount(0)
+
+  await page.getByLabel('Recovery feeling').selectOption('2')
+  await page.getByLabel('Illness or injury today').check()
+  await page.getByRole('button', { name: 'Save today’s check-in' }).click()
+  await expect(page.getByText(/Low recovery; illness or injury reported/)).toBeVisible()
+  await page.reload()
+  await expect(page.getByText(/Low recovery; illness or injury reported/)).toBeVisible()
+
+  const fileInput = page.getByLabel('FIT files')
+  await fileInput.setInputFiles({ name: 'road-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/road-ride.fit') })
+  await page.getByRole('button', { name: 'Import 1 FIT file' }).click()
+  await expect(page.getByText(/Power load on Aug 12, 2026: 51\.2 relative points/)).toBeVisible()
+  await expect(page.getByText('CTL', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('ATL', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('TSB', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText(/relative load trends, not a readiness or performance score/)).toBeVisible()
+  await expect(page.getByText(/heart-rate load is not calculated/)).toBeVisible()
+  await expect(page.getByText(/intensity suggestions should be suppressed/)).toBeVisible()
+
+  page.once('dialog', (dialog) => dialog.accept())
+  const roadCard = page.locator('.goal-card').filter({ has: page.getByRole('heading', { name: 'road-ride' }) })
+  await roadCard.getByRole('button', { name: 'Delete ride' }).click()
+  await expect(page.getByText(/No power load trend yet/)).toBeVisible()
+})
+
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
@@ -315,6 +359,22 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
       headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}` },
     })
     expect(await ownerRideResponse.json()).toEqual([{ average_power_watts: 185, notes: '' }])
+
+    for (const [table, values] of [
+      ['ftp_records', { ftp_watts: 250, set_on: '2026-08-01' }],
+      ['daily_recovery_checkins', { checkin_date: '2026-08-12', perceived_recovery: 2, illness_or_injury: true }],
+    ] as const) {
+      const createResponse = await fetch(`${url}/rest/v1/${table}`, {
+        method: 'POST',
+        headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+        body: JSON.stringify({ cyclist_id: first.id, ...values }),
+      })
+      expect(createResponse.ok).toBe(true)
+      const ownerListResponse = await fetch(`${url}/rest/v1/${table}?select=cyclist_id`, {
+        headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}` },
+      })
+      expect(await ownerListResponse.json()).toEqual([])
+    }
 
     const modification = await fetch(`${url}/rest/v1/cyclists?id=eq.${second.id}`, {
       method: 'PATCH',

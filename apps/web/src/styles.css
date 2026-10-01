@@ -137,6 +137,29 @@ button, a { font: inherit; }
 .calendar-ride-detail p { margin: 8px 0; }
 .calendar-ride-detail .text-button { border: 0; color: #32654d; background: transparent; text-decoration: underline; cursor: pointer; }
 .calendar-section button:focus-visible, .calendar-section a:focus-visible { outline: 2px solid #3c7557; outline-offset: 2px; }
+.training-load-section > p, .load-trends > p { color: #637166; font-size: 13px; line-height: 1.6; }
+.training-load-section .goal-form h3 { margin: 0; color: #19352f; font-size: 16px; }
+.training-load-section .checkin-checkbox { display: flex; align-items: center; gap: 9px; }
+.training-load-section .checkin-checkbox input { width: 17px; min-height: 17px; accent-color: #32654d; }
+.ftp-history { display: grid; gap: 7px; padding-left: 19px; color: #4d5e54; font-size: 13px; }
+.recovery-summary { border-left: 3px solid #66836f; padding: 9px 12px; background: #f2f3eb; }
+.load-trends { margin-top: 28px; padding-top: 20px; border-top: 1px solid #e3e4dc; }
+.load-trends h3 { margin: 0 0 8px; color: #19352f; font-size: 18px; }
+.load-values { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 10px; margin-top: 18px; }
+.load-values > div { display: grid; gap: 4px; border: 1px solid #d9dbd1; border-radius: 5px; padding: 12px; background: #fffefa; }
+.load-values strong { color: #66836f; font-size: 11px; letter-spacing: .7px; }
+.load-values span { color: #19352f; font-size: 22px; font-variant-numeric: tabular-nums; }
+.load-values small { color: #6d7970; font-size: 10px; line-height: 1.4; }
+.load-chart { width: 100%; height: 130px; margin-top: 12px; overflow: visible; }
+.load-chart line { stroke: #d9dbd1; stroke-width: 1; }
+.load-chart polyline { fill: none; stroke-width: 2.5; stroke-linecap: round; stroke-linejoin: round; }
+.load-chart .ctl-line { stroke: #32654d; }
+.load-chart .atl-line { stroke: #bb8154; }
+.chart-legend { display: flex; align-items: center; gap: 12px; font-size: 11px !important; }
+.ctl-key { color: #32654d; font-weight: 700; }
+.atl-key { color: #a76f42; font-weight: 700; }
+.load-caveat { border-left: 3px solid #bb8154; padding: 9px 12px; background: #f8f2e9; }
+.load-warning { border-left: 3px solid #bb8154; padding: 9px 12px; background: #f8f2e9; }
 
 .eyebrow {
   margin: 0 0 15px;
@@ -219,4 +242,5 @@ h1 {
   .calendar-day { min-height: 65px; padding: 6px; }
   .calendar-day-activity { font-size: 9px; }
   .calendar-list-day { padding: 10px; }
+  .load-values { grid-template-columns: 1fr; }
 }

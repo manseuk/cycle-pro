@@ -1,5 +1,7 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createClient, type Session } from '@supabase/supabase-js'
+import { calendarDateKey } from './calendar-date'
+import { TrainingLoadSection } from './TrainingLoadSection'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -48,12 +50,6 @@ type Ride = {
   possible_duplicate_of: string | null
 }
 type ImportResult = { fileName: string; message: string; rideId?: string; status: 'imported' | 'duplicate' | 'likely-duplicate' | 'error' }
-
-function calendarDateKey(date: Date, timeZone: string) {
-  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
-  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
-  return `${part('year')}-${part('month')}-${part('day')}`
-}
 
 function dateLabel(dateKey: string, options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) {
   return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(new Date(`${dateKey}T12:00:00Z`))
@@ -522,6 +518,7 @@ function App() {
           <button className="danger-button" disabled={savingRide} onClick={() => void deleteRide(ride)}>Delete ride</button>
         </article>)}</div>}
       </section> : null}
+      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <TrainingLoadSection client={supabase} cyclistId={session.user.id} rides={rides} timeZone={savedTimezone} /> : null}
       {session && mode !== 'new-password' && cyclistAccount === 'available' ? <section className="calendar-section" aria-labelledby="calendar-heading">
         <div className="calendar-heading-row">
           <div><p className="eyebrow">COMPLETED ACTIVITY</p><h2 id="calendar-heading">Training calendar</h2></div>
