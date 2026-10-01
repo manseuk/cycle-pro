@@ -49,6 +49,22 @@ type Ride = {
 }
 type ImportResult = { fileName: string; message: string; rideId?: string; status: 'imported' | 'duplicate' | 'likely-duplicate' | 'error' }
 
+function calendarDateKey(date: Date, timeZone: string) {
+  const parts = new Intl.DateTimeFormat('en-US', { timeZone, year: 'numeric', month: '2-digit', day: '2-digit' }).formatToParts(date)
+  const part = (type: Intl.DateTimeFormatPartTypes) => parts.find((item) => item.type === type)?.value ?? ''
+  return `${part('year')}-${part('month')}-${part('day')}`
+}
+
+function dateLabel(dateKey: string, options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) {
+  return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(new Date(`${dateKey}T12:00:00Z`))
+}
+
+function shiftCalendarMonth(monthKey: string, amount: number) {
+  const month = new Date(`${monthKey}-01T00:00:00Z`)
+  month.setUTCMonth(month.getUTCMonth() + amount)
+  return `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`
+}
+
 const emptyGoalDraft: GoalDraft = {
   goalType: 'event', name: '', eventDate: '', finishMinutes: '',
   weeklyTargetType: 'rides', weeklyTargetValue: '', ftpTargetWatts: '',
@@ -79,6 +95,29 @@ function App() {
   const [editingRideNotes, setEditingRideNotes] = useState<string | null>(null)
   const [rideNotesDraft, setRideNotesDraft] = useState('')
   const [savingRide, setSavingRide] = useState(false)
+  const [calendarMonth, setCalendarMonth] = useState(() => calendarDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').slice(0, 7))
+  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => calendarDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'))
+  const [calendarView, setCalendarView] = useState<'month' | 'list'>(() => window.matchMedia('(max-width: 600px)').matches ? 'list' : 'month')
+  const [calendarRideId, setCalendarRideId] = useState<string | null>(null)
+
+  const ridesByCalendarDate = new Map<string, Ride[]>()
+  for (const ride of rides) {
+    let dateKey: string
+    try { dateKey = calendarDateKey(new Date(ride.started_at), savedTimezone) } catch { continue }
+    ridesByCalendarDate.set(dateKey, [...(ridesByCalendarDate.get(dateKey) ?? []), ride])
+  }
+  const monthStart = new Date(`${calendarMonth}-01T00:00:00Z`)
+  const monthTitle = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(monthStart)
+  const firstGridDay = new Date(monthStart)
+  firstGridDay.setUTCDate(firstGridDay.getUTCDate() - firstGridDay.getUTCDay())
+  const calendarDays = Array.from({ length: 42 }, (_, index) => {
+    const day = new Date(firstGridDay)
+    day.setUTCDate(firstGridDay.getUTCDate() + index)
+    return `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, '0')}-${String(day.getUTCDate()).padStart(2, '0')}`
+  })
+  const monthRideDates = [...ridesByCalendarDate.entries()].filter(([dateKey]) => dateKey.startsWith(calendarMonth)).sort(([first], [second]) => second.localeCompare(first))
+  const selectedDateRides = ridesByCalendarDate.get(selectedCalendarDate) ?? []
+  const selectedCalendarRide = rides.find((ride) => ride.id === calendarRideId) ?? null
 
   useEffect(() => {
     if (!supabase) { setReady(true); return }
@@ -110,6 +149,9 @@ function App() {
       if (!error && data) {
         setCalendarTimezone(data.calendar_timezone)
         setSavedTimezone(data.calendar_timezone)
+        const today = calendarDateKey(new Date(), data.calendar_timezone)
+        setSelectedCalendarDate(today)
+        setCalendarMonth(today.slice(0, 7))
       }
     })
     return () => { currentCyclist = false }
@@ -227,6 +269,9 @@ function App() {
     if (error) setTimezoneMessage('Your calendar time zone could not be saved.')
     else {
       setSavedTimezone(calendarTimezone)
+      const today = calendarDateKey(new Date(), calendarTimezone)
+      setSelectedCalendarDate(today)
+      setCalendarMonth(today.slice(0, 7))
       setTimezoneMessage('Calendar time zone saved.')
     }
     setSavingRide(false)
@@ -311,6 +356,7 @@ function App() {
     if (error) setRideMessage('This Ride could not be deleted. Please try again.')
     else {
       setRides((previous) => previous.filter((item) => item.id !== ride.id))
+      setCalendarRideId((previous) => previous === ride.id ? null : previous)
       setRideMessage('Ride deleted.')
     }
     setSavingRide(false)
@@ -475,6 +521,69 @@ function App() {
           </form> : <><p>{ride.notes || 'No notes.'}</p><button onClick={() => { setEditingRideNotes(ride.id); setRideNotesDraft(ride.notes) }}>Edit notes</button></>}
           <button className="danger-button" disabled={savingRide} onClick={() => void deleteRide(ride)}>Delete ride</button>
         </article>)}</div>}
+      </section> : null}
+      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <section className="calendar-section" aria-labelledby="calendar-heading">
+        <div className="calendar-heading-row">
+          <div><p className="eyebrow">COMPLETED ACTIVITY</p><h2 id="calendar-heading">Training calendar</h2></div>
+          <div className="calendar-view-switch" aria-label="Calendar view">
+            <button aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Month</button>
+            <button aria-pressed={calendarView === 'list'} onClick={() => setCalendarView('list')}>List</button>
+          </div>
+        </div>
+        <div className="calendar-toolbar">
+          <div className="calendar-month-controls">
+            <button aria-label="Previous month" onClick={() => setCalendarMonth((month) => shiftCalendarMonth(month, -1))}>‹</button>
+            <h3>{monthTitle}</h3>
+            <button aria-label="Next month" onClick={() => setCalendarMonth((month) => shiftCalendarMonth(month, 1))}>›</button>
+          </div>
+          <button className="calendar-today" onClick={() => {
+            const today = calendarDateKey(new Date(), savedTimezone)
+            setSelectedCalendarDate(today)
+            setCalendarMonth(today.slice(0, 7))
+          }}>Today</button>
+        </div>
+        {calendarView === 'month' ? <div className="calendar-month-view">
+          <div className="calendar-weekdays" aria-hidden="true">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}</div>
+          <div className="calendar-grid">{calendarDays.map((dateKey) => {
+            const dayRides = ridesByCalendarDate.get(dateKey) ?? []
+            const isCurrentMonth = dateKey.startsWith(calendarMonth)
+            return <button
+              className={`calendar-day${isCurrentMonth ? '' : ' calendar-day-outside'}${selectedCalendarDate === dateKey ? ' calendar-day-selected' : ''}`}
+              key={dateKey}
+              aria-label={`${dateLabel(dateKey)}, ${dayRides.length} completed ${dayRides.length === 1 ? 'ride' : 'rides'}`}
+              aria-pressed={selectedCalendarDate === dateKey}
+              onClick={() => { setSelectedCalendarDate(dateKey); setCalendarMonth(dateKey.slice(0, 7)) }}
+            ><span className="calendar-day-number">{Number(dateKey.slice(-2))}</span>
+              {dayRides.length ? <span className="calendar-day-activity">{dayRides.length} {dayRides.length === 1 ? 'ride' : 'rides'}</span> : null}
+            </button>
+          })}</div>
+        </div> : <div className="calendar-list-view">
+          {monthRideDates.length ? monthRideDates.map(([dateKey, dateRides]) => <section className="calendar-list-day" key={dateKey}>
+            <button className="calendar-list-date" aria-pressed={selectedCalendarDate === dateKey} onClick={() => setSelectedCalendarDate(dateKey)}>{dateLabel(dateKey)}</button>
+            {dateRides.map((ride) => <button className="calendar-ride-item" key={ride.id} onClick={() => { setSelectedCalendarDate(dateKey); setCalendarRideId(ride.id) }}>
+              <span className="completed-ride-mark" aria-hidden="true">✓</span><span><strong>{ride.activity_name}</strong><small>Completed Ride · {displayTimestamp(ride.started_at)}</small></span>
+            </button>)}
+          </section>) : <p>No completed rides this month.</p>}
+        </div>}
+        <section className="calendar-selected-date" aria-labelledby="calendar-selected-date-heading">
+          <h3 id="calendar-selected-date-heading">{dateLabel(selectedCalendarDate)}</h3>
+          {selectedDateRides.length ? <ul>{selectedDateRides.map((ride) => <li key={ride.id}>
+            <button className="calendar-ride-item" onClick={() => setCalendarRideId(ride.id)}>
+              <span className="completed-ride-mark" aria-hidden="true">✓</span><span><strong>{ride.activity_name}</strong><small>Completed Ride · {displayTimestamp(ride.started_at)}</small></span>
+            </button>
+          </li>)}</ul> : <p>No completed rides on this date.</p>}
+        </section>
+        {selectedCalendarRide ? <section className="calendar-ride-detail" aria-labelledby="calendar-ride-detail-heading">
+          <div className="calendar-detail-heading"><div><p className="goal-kind">COMPLETED RIDE</p><h3 id="calendar-ride-detail-heading">{selectedCalendarRide.activity_name}</h3></div><button className="text-button" onClick={() => setCalendarRideId(null)}>Close details</button></div>
+          <p>{displayTimestamp(selectedCalendarRide.started_at)}</p>
+          <dl className="ride-metrics">
+            <div><dt>Moving time</dt><dd>{selectedCalendarRide.duration_seconds === null ? 'Unavailable' : `${Math.round(selectedCalendarRide.duration_seconds / 60)} min`}</dd></div>
+            <div><dt>Distance</dt><dd>{selectedCalendarRide.total_distance_meters === null ? 'Unavailable' : `${(selectedCalendarRide.total_distance_meters / 1000).toFixed(1)} km`}</dd></div>
+            <div><dt>Average power</dt><dd>{selectedCalendarRide.average_power_watts === null ? 'Unavailable' : `${selectedCalendarRide.average_power_watts} W`}</dd></div>
+            <div><dt>Average heart rate</dt><dd>{selectedCalendarRide.average_heart_rate === null ? 'Unavailable' : `${selectedCalendarRide.average_heart_rate} bpm`}</dd></div>
+          </dl>
+          <a href={`#ride-${selectedCalendarRide.id}`}>Open ride management details</a>
+        </section> : null}
       </section> : null}
       {message ? <p className="form-message" role="status">{message}</p> : null}
     </section>

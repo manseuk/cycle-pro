@@ -171,6 +171,49 @@ test('Cyclist imports independent FIT files, sees duplicate outcomes, edits note
   await expect(page.getByRole('heading', { name: 'road-ride' })).toHaveCount(0)
 })
 
+test('Cyclist sees completed Rides on the calendar by local date and can open and remove them', async ({ page }) => {
+  const email = `calendar-cyclist-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-calendar-123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByRole('heading', { name: 'Training calendar' })).toBeVisible()
+
+  await page.getByLabel('Calendar time zone').fill('America/Adak')
+  await page.getByRole('button', { name: 'Save time zone' }).click()
+  await expect(page.getByText('Calendar time zone saved.')).toBeVisible()
+  const fileInput = page.getByLabel('FIT files')
+  await fileInput.setInputFiles([
+    { name: 'road-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/road-ride.fit') },
+    { name: 'partial-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/partial-ride.fit') },
+  ])
+  await page.getByRole('button', { name: 'Import 2 FIT files' }).click()
+  await expect(page.getByRole('heading', { name: 'road-ride' })).toBeVisible()
+
+  const current = new Date()
+  const target = new Date('2026-08-01T00:00:00Z')
+  const monthsBack = (current.getUTCFullYear() - target.getUTCFullYear()) * 12 + current.getUTCMonth() - target.getUTCMonth()
+  for (let index = 0; index < monthsBack; index += 1) await page.getByRole('button', { name: 'Previous month' }).click()
+  await expect(page.getByRole('heading', { name: 'August 2026' })).toBeVisible()
+  await page.getByRole('button', { name: /Tuesday, August 11, 2026, 2 completed rides/ }).click()
+  await expect(page.getByRole('heading', { name: 'Tuesday, August 11, 2026' })).toBeVisible()
+  await expect(page.getByRole('button', { name: /road-ride.*Completed Ride/ })).toBeVisible()
+
+  await page.setViewportSize({ width: 390, height: 844 })
+  await page.getByRole('button', { name: 'List', exact: true }).click()
+  await expect(page.getByText(/Completed Ride · Aug 11, 2026/).first()).toBeVisible()
+  await page.getByRole('button', { name: /road-ride.*Completed Ride/ }).first().click()
+  await expect(page.locator('.calendar-ride-detail').getByRole('heading', { name: 'road-ride', level: 3 })).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open ride management details' })).toBeVisible()
+
+  const roadCard = page.locator('.goal-card').filter({ has: page.getByRole('heading', { name: 'road-ride', level: 3 }) })
+  page.once('dialog', (dialog) => dialog.accept())
+  await roadCard.getByRole('button', { name: 'Delete ride' }).click()
+  await expect(page.getByRole('button', { name: /road-ride.*Completed Ride/ })).toHaveCount(0)
+})
+
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
