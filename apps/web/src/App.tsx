@@ -1,5 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import { createClient, type Session } from '@supabase/supabase-js'
+import { parseCyclingRide } from './fit-import'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -29,6 +30,25 @@ type GoalDraft = {
   weeklyTargetValue: string
   ftpTargetWatts: string
 }
+type Ride = {
+  id: string
+  cyclist_id: string
+  activity_name: string
+  started_at: string
+  duration_seconds: number | null
+  elapsed_seconds: number | null
+  total_distance_meters: number | null
+  total_ascent_meters: number | null
+  average_power_watts: number | null
+  max_power_watts: number | null
+  average_heart_rate: number | null
+  max_heart_rate: number | null
+  average_cadence: number | null
+  notes: string
+  is_likely_duplicate: boolean
+  possible_duplicate_of: string | null
+}
+type ImportResult = { fileName: string; message: string; rideId?: string; status: 'imported' | 'duplicate' | 'likely-duplicate' | 'error' }
 
 const emptyGoalDraft: GoalDraft = {
   goalType: 'event', name: '', eventDate: '', finishMinutes: '',
@@ -48,6 +68,18 @@ function App() {
   const [goalDraft, setGoalDraft] = useState<GoalDraft>(emptyGoalDraft)
   const [goalTemplate, setGoalTemplate] = useState('custom')
   const [goalMessage, setGoalMessage] = useState('')
+  const [rides, setRides] = useState<Ride[]>([])
+  const [ridesLoading, setRidesLoading] = useState(false)
+  const [rideMessage, setRideMessage] = useState('')
+  const [calendarTimezone, setCalendarTimezone] = useState(Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC')
+  const [savedTimezone, setSavedTimezone] = useState('UTC')
+  const [timezoneMessage, setTimezoneMessage] = useState('')
+  const [selectedFiles, setSelectedFiles] = useState<File[]>([])
+  const [importResults, setImportResults] = useState<ImportResult[]>([])
+  const [uploading, setUploading] = useState(false)
+  const [editingRideNotes, setEditingRideNotes] = useState<string | null>(null)
+  const [rideNotesDraft, setRideNotesDraft] = useState('')
+  const [savingRide, setSavingRide] = useState(false)
 
   useEffect(() => {
     if (!supabase) { setReady(true); return }
@@ -66,10 +98,43 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!session || !supabase) return
-    void supabase.from('cyclists').select('id').maybeSingle().then(({ data, error }) => {
+    if (!session || !supabase) {
+      setCyclistAccount('loading')
+      setSavedTimezone('UTC')
+      return
+    }
+    let currentCyclist = true
+    setCyclistAccount('loading')
+    void supabase.from('cyclists').select('id,calendar_timezone').maybeSingle().then(({ data, error }) => {
+      if (!currentCyclist) return
       setCyclistAccount(!error && data ? 'available' : 'unavailable')
+      if (!error && data) {
+        setCalendarTimezone(data.calendar_timezone)
+        setSavedTimezone(data.calendar_timezone)
+      }
     })
+    return () => { currentCyclist = false }
+  }, [session?.user.id])
+
+  useEffect(() => {
+    if (!session || !supabase) {
+      setRides([])
+      setRidesLoading(false)
+      setSelectedFiles([])
+      setImportResults([])
+      setEditingRideNotes(null)
+      return
+    }
+    let currentCyclist = true
+    setRides([])
+    setRidesLoading(true)
+    void supabase.from('rides').select('*').eq('cyclist_id', session.user.id).order('started_at', { ascending: false }).then(({ data, error }) => {
+      if (!currentCyclist) return
+      if (error) setRideMessage('Your Rides could not be loaded. Please refresh the page.')
+      else setRides((data ?? []) as Ride[])
+      setRidesLoading(false)
+    })
+    return () => { currentCyclist = false }
   }, [session?.user.id])
 
   useEffect(() => {
@@ -148,6 +213,112 @@ function App() {
     } catch (error) {
       setGoalMessage(error instanceof Error ? error.message : 'Could not save your goal. Please try again.')
     } finally { setBusy(false) }
+  }
+
+  async function saveCalendarTimezone(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!supabase || !session) return
+    try { new Intl.DateTimeFormat(undefined, { timeZone: calendarTimezone }) } catch {
+      setTimezoneMessage('Enter a valid time zone, such as Europe/London.')
+      return
+    }
+    setSavingRide(true)
+    setTimezoneMessage('')
+    const { error } = await supabase.from('cyclists').update({ calendar_timezone: calendarTimezone }).eq('id', session.user.id)
+    if (error) setTimezoneMessage('Your calendar time zone could not be saved.')
+    else {
+      setSavedTimezone(calendarTimezone)
+      setTimezoneMessage('Calendar time zone saved.')
+    }
+    setSavingRide(false)
+  }
+
+  async function importRides(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault()
+    if (!session || selectedFiles.length === 0) return
+    const form = event.currentTarget
+    setUploading(true)
+    setImportResults([])
+    setRideMessage('')
+    let importedAny = false
+    for (const file of selectedFiles) {
+      try {
+        if (file.size === 0) throw new Error('This file is empty.')
+        if (file.size > 20 * 1024 * 1024) throw new Error('This FIT file is too large. The maximum size is 20 MB.')
+        const fileBytes = await file.arrayBuffer()
+        const [{ ride }, digest] = await Promise.all([
+          parseCyclingRide(fileBytes, file.name),
+          crypto.subtle.digest('SHA-256', fileBytes),
+        ])
+        const fileHash = Array.from(new Uint8Array(digest), (byte) => byte.toString(16).padStart(2, '0')).join('')
+        const response = await fetch(`${apiBaseUrl || '/api'}/rides/import`, {
+          method: 'POST',
+          headers: { authorization: `Bearer ${session.access_token}`, 'content-type': 'application/json' },
+          body: JSON.stringify({ file_sha256: fileHash, ride }),
+        })
+        const result = await response.json() as {
+          status?: 'imported' | 'duplicate'
+          error?: string
+          ride?: Ride
+          likelyDuplicate?: boolean
+        }
+        if (!response.ok) throw new Error(result.error ?? 'This file could not be imported.')
+        if (result.status === 'duplicate' && result.ride) {
+          setImportResults((previous) => [...previous, { fileName: file.name, status: 'duplicate', rideId: result.ride!.id, message: `Exact duplicate skipped. Existing Ride: ${result.ride!.activity_name}.` }])
+        } else if (result.status === 'imported' && result.ride) {
+          importedAny = true
+          setImportResults((previous) => [...previous, {
+            fileName: file.name,
+            status: result.likelyDuplicate ? 'likely-duplicate' : 'imported',
+            rideId: result.ride!.id,
+            message: result.likelyDuplicate ? 'Imported as a separate Ride. It may duplicate an existing activity; please review.' : 'Ride imported successfully.',
+          }])
+        } else throw new Error('The import service returned an unexpected result.')
+      } catch (error) {
+        setImportResults((previous) => [...previous, {
+          fileName: file.name,
+          status: 'error',
+          message: error instanceof Error ? error.message : 'This file could not be imported.',
+        }])
+      }
+    }
+    if (importedAny && supabase) {
+      const { data, error } = await supabase.from('rides').select('*').eq('cyclist_id', session.user.id).order('started_at', { ascending: false })
+      if (!error) setRides((data ?? []) as Ride[])
+    }
+    setSelectedFiles([])
+    form.reset()
+    setUploading(false)
+  }
+
+  async function saveRideNotes(rideId: string) {
+    if (!supabase || !session) return
+    setSavingRide(true)
+    const { data, error } = await supabase.from('rides').update({ notes: rideNotesDraft }).eq('id', rideId).eq('cyclist_id', session.user.id).select('*').single()
+    if (error) setRideMessage('Ride notes could not be saved. Please try again.')
+    else {
+      setRides((previous) => previous.map((ride) => ride.id === rideId ? data as Ride : ride))
+      setEditingRideNotes(null)
+      setRideMessage('Ride notes saved.')
+    }
+    setSavingRide(false)
+  }
+
+  async function deleteRide(ride: Ride) {
+    if (!supabase || !session || !window.confirm(`Delete “${ride.activity_name}”? This removes the Ride from your account.`)) return
+    setSavingRide(true)
+    const { error } = await supabase.from('rides').delete().eq('id', ride.id).eq('cyclist_id', session.user.id)
+    if (error) setRideMessage('This Ride could not be deleted. Please try again.')
+    else {
+      setRides((previous) => previous.filter((item) => item.id !== ride.id))
+      setRideMessage('Ride deleted.')
+    }
+    setSavingRide(false)
+  }
+
+  function displayTimestamp(timestamp: string) {
+    try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: savedTimezone }).format(new Date(timestamp)) }
+    catch { return new Date(timestamp).toLocaleString() }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -267,6 +438,43 @@ function App() {
           <div className="goal-actions"><button disabled={busy}>{busy ? 'Saving…' : 'Save primary goal'}</button><button type="button" className="text-button" onClick={() => setEditingGoal(false)}>Cancel</button></div>
         </form> : null}
         {goalMessage ? <p className="form-message" role="status">{goalMessage}</p> : null}
+      </section> : null}
+      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <section className="goal-section" aria-labelledby="rides-heading">
+        <h2 id="rides-heading">Your rides</h2>
+        <p>Import completed rides from FIT files. Each file is processed separately; uploads are discarded after parsing.</p>
+        <form className="goal-form" onSubmit={(event) => void importRides(event)}>
+          <label>FIT files<input type="file" accept=".fit,application/octet-stream" multiple onChange={(event) => setSelectedFiles(Array.from(event.currentTarget.files ?? []))} /></label>
+          <p className="goal-help">Files up to 20 MB. Sensor measurements are kept as recorded.</p>
+          <button disabled={uploading || selectedFiles.length === 0}>{uploading ? 'Importing…' : `Import ${selectedFiles.length || ''} FIT file${selectedFiles.length === 1 ? '' : 's'}`}</button>
+        </form>
+        {importResults.length ? <ul aria-label="FIT import results">{importResults.map((result, index) => <li key={`${result.fileName}-${index}`}>
+          <strong>{result.fileName}</strong> — {result.message}{result.rideId ? <> <a href={`#ride-${result.rideId}`}>View Ride</a></> : null}
+        </li>)}</ul> : null}
+        <form className="goal-form" onSubmit={(event) => void saveCalendarTimezone(event)}>
+          <label>Calendar time zone<input value={calendarTimezone} onChange={(event) => setCalendarTimezone(event.currentTarget.value)} placeholder="Europe/London" /></label>
+          <p className="goal-help">Ride times are displayed in this time zone. Currently saved: {savedTimezone}.</p>
+          <button disabled={savingRide || calendarTimezone === savedTimezone}>Save time zone</button>
+          {timezoneMessage ? <p role="status">{timezoneMessage}</p> : null}
+        </form>
+        {rideMessage ? <p className="form-message" role="status">{rideMessage}</p> : null}
+        {ridesLoading ? <p role="status">Loading rides…</p> : rides.length === 0 ? <p>No rides yet. Import a FIT file to get started.</p> : <div className="ride-list">{rides.map((ride) => <article className="goal-card" id={`ride-${ride.id}`} key={ride.id}>
+          <p className="goal-kind">{displayTimestamp(ride.started_at)}{ride.is_likely_duplicate ? ' · Possible duplicate — review this ride' : ''}</p>
+          <h3>{ride.activity_name}</h3>
+          <dl className="ride-metrics">
+            <div><dt>Moving time</dt><dd>{ride.duration_seconds === null ? 'Unavailable' : `${Math.round(ride.duration_seconds / 60)} min`}</dd></div>
+            <div><dt>Distance</dt><dd>{ride.total_distance_meters === null ? 'Unavailable' : `${(ride.total_distance_meters / 1000).toFixed(1)} km`}</dd></div>
+            <div><dt>Ascent</dt><dd>{ride.total_ascent_meters === null ? 'Unavailable' : `${ride.total_ascent_meters} m`}</dd></div>
+            <div><dt>Average power</dt><dd>{ride.average_power_watts === null ? 'Unavailable' : `${ride.average_power_watts} W`}</dd></div>
+            <div><dt>Average heart rate</dt><dd>{ride.average_heart_rate === null ? 'Unavailable' : `${ride.average_heart_rate} bpm`}</dd></div>
+            <div><dt>Average cadence</dt><dd>{ride.average_cadence === null ? 'Unavailable' : `${ride.average_cadence} rpm`}</dd></div>
+          </dl>
+          {editingRideNotes === ride.id ? <form onSubmit={(event) => { event.preventDefault(); void saveRideNotes(ride.id) }}>
+            <label>Ride notes<textarea value={rideNotesDraft} onChange={(event) => setRideNotesDraft(event.currentTarget.value)} maxLength={4000} /></label>
+            <button disabled={savingRide}>{savingRide ? 'Saving…' : 'Save notes'}</button>
+            <button type="button" className="text-button" onClick={() => setEditingRideNotes(null)}>Cancel</button>
+          </form> : <><p>{ride.notes || 'No notes.'}</p><button onClick={() => { setEditingRideNotes(ride.id); setRideNotesDraft(ride.notes) }}>Edit notes</button></>}
+          <button className="danger-button" disabled={savingRide} onClick={() => void deleteRide(ride)}>Delete ride</button>
+        </article>)}</div>}
       </section> : null}
       {message ? <p className="form-message" role="status">{message}</p> : null}
     </section>

@@ -86,6 +86,12 @@ button, a { font: inherit; }
 .goal-form .text-button { min-height: auto; border: 0; padding: 0; color: #32654d; background: transparent; text-align: left; text-decoration: underline; }
 .goal-actions { display: flex; align-items: center; gap: 18px; }
 .goal-help { margin: -5px 0 0; color: #6d7970; font-size: 12px; }
+.ride-metrics { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 18px; margin: 8px 0; }
+.ride-metrics div { display: flex; justify-content: space-between; gap: 10px; border-bottom: 1px solid #e3e4dc; padding-bottom: 6px; }
+.ride-metrics dt { color: #6d7970; }
+.ride-metrics dd { margin: 0; color: #19352f; font-variant-numeric: tabular-nums; }
+.goal-card .danger-button { justify-self: start; border-color: #a24335; color: #a24335; background: transparent; }
+.goal-card textarea { min-height: 90px; border: 1px solid #cdd3c9; border-radius: 5px; padding: 10px; color: #19352f; background: #fffefa; font: inherit; resize: vertical; }
 
 .eyebrow {
   margin: 0 0 15px;

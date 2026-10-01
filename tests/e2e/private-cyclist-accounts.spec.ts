@@ -126,6 +126,51 @@ test('Cyclist can create and edit one Primary active goal from a template', asyn
   await expect(page.getByRole('button', { name: 'Edit goal' })).toHaveCount(1)
 })
 
+test('Cyclist imports independent FIT files, sees duplicate outcomes, edits notes, and deletes a Ride', async ({ page }) => {
+  const email = `ride-cyclist-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-ride-123')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByRole('heading', { name: 'Your rides' })).toBeVisible()
+
+  await page.getByLabel('Calendar time zone').fill('Europe/London')
+  await page.getByRole('button', { name: 'Save time zone' }).click()
+  await expect(page.getByText('Calendar time zone saved.')).toBeVisible()
+
+  const input = page.getByLabel('FIT files')
+  await input.setInputFiles([
+    { name: 'road-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/road-ride.fit') },
+    { name: 'partial-ride.fit', mimeType: 'application/octet-stream', buffer: readFileSync('tests/fixtures/partial-ride.fit') },
+    { name: 'not-a-ride.fit', mimeType: 'application/octet-stream', buffer: Buffer.from('not a FIT file') },
+  ])
+  await page.getByRole('button', { name: 'Import 3 FIT files' }).click()
+  await expect(page.getByText(/road-ride\.fit — Ride imported successfully\./)).toBeVisible()
+  await expect(page.getByText(/partial-ride\.fit — Ride imported successfully\./)).toBeVisible()
+  await expect(page.getByText(/not-a-ride\.fit — This file is not a valid FIT activity/)).toBeVisible()
+  await expect(page.getByText('Unavailable', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('32.0 km')).toBeVisible()
+  await expect(page.getByText('58 min')).toBeVisible()
+
+  await input.setInputFiles('tests/fixtures/road-ride.fit')
+  await page.getByRole('button', { name: 'Import 1 FIT file' }).click()
+  await expect(page.getByText(/Exact duplicate skipped/)).toBeVisible()
+  await input.setInputFiles('tests/fixtures/near-duplicate-ride.fit')
+  await page.getByRole('button', { name: 'Import 1 FIT file' }).click()
+  await expect(page.getByText(/Imported as a separate Ride\. It may duplicate/)).toBeVisible()
+
+  const roadCard = page.locator('.goal-card').filter({ has: page.getByRole('heading', { name: 'road-ride' }) })
+  await roadCard.getByRole('button', { name: 'Edit notes' }).click()
+  await roadCard.getByLabel('Ride notes').fill('Windy on the exposed section.')
+  await roadCard.getByRole('button', { name: 'Save notes' }).click()
+  await expect(roadCard.getByText('Windy on the exposed section.')).toBeVisible()
+  page.once('dialog', (dialog) => dialog.accept())
+  await roadCard.getByRole('button', { name: 'Delete ride' }).click()
+  await expect(page.getByRole('heading', { name: 'road-ride' })).toHaveCount(0)
+})
+
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
   await page.goto('/')
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
@@ -177,6 +222,56 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
       headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}` },
     })
     expect(await secondGoalResponse.json()).toEqual([])
+
+    const directRideCreateResponse = await fetch(`${url}/rest/v1/rides`, {
+      method: 'POST',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({
+        cyclist_id: first.id,
+        file_sha256: 'a'.repeat(64),
+        activity_name: 'Private ride',
+        started_at: '2026-08-12T06:30:00.000Z',
+        duration_seconds: 3600,
+        average_power_watts: 185,
+        notes: '',
+      }),
+    })
+    expect(directRideCreateResponse.ok).toBe(false)
+    const rideCreateResponse = await fetch(`${url}/rest/v1/rides`, {
+      method: 'POST',
+      headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({
+        cyclist_id: first.id,
+        file_sha256: 'b'.repeat(64),
+        activity_name: 'Private ride',
+        started_at: '2026-08-12T06:30:00.000Z',
+        duration_seconds: 3600,
+        average_power_watts: 185,
+        notes: '',
+      }),
+    })
+    expect(rideCreateResponse.ok).toBe(true)
+    const [privateRide] = await rideCreateResponse.json() as Array<{ id: string }>
+    const secondRideResponse = await fetch(`${url}/rest/v1/rides?select=id`, {
+      headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}` },
+    })
+    expect(await secondRideResponse.json()).toEqual([])
+    const sensorMutation = await fetch(`${url}/rest/v1/rides?id=eq.${privateRide.id}`, {
+      method: 'PATCH',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({ average_power_watts: 999 }),
+    })
+    expect(sensorMutation.ok).toBe(false)
+    const unauthorizedNotesMutation = await fetch(`${url}/rest/v1/rides?id=eq.${privateRide.id}`, {
+      method: 'PATCH',
+      headers: { apikey: anonKey, authorization: `Bearer ${secondSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({ notes: 'Private change' }),
+    })
+    expect(unauthorizedNotesMutation.ok).toBe(true)
+    const ownerRideResponse = await fetch(`${url}/rest/v1/rides?id=eq.${privateRide.id}&select=average_power_watts,notes`, {
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}` },
+    })
+    expect(await ownerRideResponse.json()).toEqual([{ average_power_watts: 185, notes: '' }])
 
     const modification = await fetch(`${url}/rest/v1/cyclists?id=eq.${second.id}`, {
       method: 'PATCH',
