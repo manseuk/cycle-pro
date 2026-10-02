@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { calendarDateKey } from './calendar-date'
-import { buildDailySuggestion, type SuggestionGoal } from './daily-suggestion'
+import { useToday } from './use-today'
+import { dateLabel } from './calendar-date'
+import { buildDailySuggestion, ftpStatus, type SuggestionGoal } from './daily-suggestion'
 import { calculateTrainingLoad, type DatedFtp, type LoadRide } from './training-load'
 
 type Suggestion = {
@@ -26,12 +27,8 @@ type Props = {
   inputRevision: number
 }
 
-function dateLabel(dateKey: string) {
-  return new Intl.DateTimeFormat(undefined, { dateStyle: 'long', timeZone: 'UTC' }).format(new Date(`${dateKey}T12:00:00Z`))
-}
-
 export function DailySuggestionSection({ client, cyclistId, goal, rides, timeZone, onCalendarChanged, inputRevision }: Props) {
-  const today = calendarDateKey(new Date(), timeZone)
+  const today = useToday(timeZone)
   const [suggestion, setSuggestion] = useState<Suggestion | null>(null)
   const [abstention, setAbstention] = useState('')
   const [loading, setLoading] = useState(true)
@@ -66,14 +63,12 @@ export function DailySuggestionSection({ client, cyclistId, goal, rides, timeZon
         return
       }
 
-      const [ftpResult] = await Promise.all([
-        client.from('ftp_records').select('ftp_watts,set_on').eq('cyclist_id', cyclistId).lte('set_on', today).order('set_on', { ascending: false }),
-      ])
+      const ftpResult = await client.from('ftp_records').select('ftp_watts,set_on').eq('cyclist_id', cyclistId).lte('set_on', today).order('set_on', { ascending: false })
       if (!active) return
       if (ftpResult.error) { setAbstention('Suggestion inputs could not be loaded. Please refresh the page.'); setLoading(false); return }
       const ftpHistory = (ftpResult.data ?? []) as DatedFtp[]
       const load = calculateTrainingLoad(rides, ftpHistory, timeZone)
-      const decision = buildDailySuggestion(goal, load, ftpHistory.length > 0, checkin?.perceived_recovery ?? null, checkin?.illness_or_injury ?? false)
+      const decision = buildDailySuggestion(goal, load, ftpStatus(ftpHistory[0]?.set_on ?? null, today), checkin?.perceived_recovery ?? null, checkin?.illness_or_injury ?? false)
       if (!decision.suggestion) { setAbstention(decision.reason); setLoading(false); return }
 
       const { error: saveError } = await client.from('workout_suggestions').upsert({
@@ -86,7 +81,6 @@ export function DailySuggestionSection({ client, cyclistId, goal, rides, timeZon
       if (saveError || readError) setAbstention('Today’s suggestion could not be saved. Please refresh the page.')
       else if (saved) { setSuggestion(saved as Suggestion); onCalendarChanged() }
       else setAbstention('A suggestion is already recorded for today.')
-      if (saveError) setAbstention('Today’s suggestion could not be saved. Please refresh the page.')
       setLoading(false)
     })()
     return () => { active = false }
@@ -137,7 +131,7 @@ export function DailySuggestionSection({ client, cyclistId, goal, rides, timeZon
         <button disabled={busy} onClick={() => void decide('accepted')}>Accept and add to calendar</button>
         <button className="text-button" disabled={busy} onClick={() => void decide('skipped')}>Skip today</button>
       </div> : <p className="suggestion-state" role="status">{suggestion.status === 'accepted' ? 'Accepted · planned on your calendar' : 'Skipped · not added to your calendar'}</p>}
-      <p className="goal-help">For {dateLabel(suggestion.suggestion_date)}. Training-load trends are estimates, not readiness advice.</p>
+      <p className="goal-help">For {dateLabel(suggestion.suggestion_date, { dateStyle: 'long' })}. Training-load trends are estimates, not readiness advice.</p>
     </article> : null}
     {message ? <p role="status">{message}</p> : null}
   </section>

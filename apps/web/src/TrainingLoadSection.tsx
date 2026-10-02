@@ -1,6 +1,6 @@
 import { useEffect, useState, type FormEvent } from 'react'
 import type { SupabaseClient } from '@supabase/supabase-js'
-import { calendarDateKey } from './calendar-date'
+import { useToday } from './use-today'
 import { calculateTrainingLoad, type DatedFtp, type LoadRide } from './training-load'
 
 type Ride = LoadRide
@@ -43,7 +43,7 @@ function chartPoints(values: number[], maximum: number) {
 }
 
 export function TrainingLoadSection({ client, cyclistId, rides, timeZone, onRecoverySaved }: Props) {
-  const today = calendarDateKey(new Date(), timeZone)
+  const today = useToday(timeZone)
   const [ftpRecords, setFtpRecords] = useState<FtpRecord[]>([])
   const [ftpWatts, setFtpWatts] = useState('')
   const [ftpDate, setFtpDate] = useState(today)
@@ -150,7 +150,7 @@ export function TrainingLoadSection({ client, cyclistId, rides, timeZone, onReco
 
     <section className="load-trends" aria-labelledby="load-trends-heading">
       <h3 id="load-trends-heading">Power training load</h3>
-      <p>Daily relative load = moving time (hours) × (average power ÷ active FTP)² × 100. It is a simple average-power estimate, not a standardized TSS score; heart-rate load is not calculated.</p>
+      <p>Daily relative load = moving time (hours) × (average power ÷ active FTP)² × 100. It is a simple average-power estimate, not a standardized TSS score, so variable efforts such as races and intervals read lower than their true cost; heart-rate load is not calculated.</p>
       {trend.latest ? <>
         {trend.latestRideLoad ? <p>Power load on {displayDate(trend.latestRideLoad.date)}: {trend.latestRideLoad.load.toFixed(1)} relative points.</p> : null}
         <div className="load-values">
@@ -164,7 +164,7 @@ export function TrainingLoadSection({ client, cyclistId, rides, timeZone, onReco
           <polyline className="atl-line" points={chartPoints(trend.points.map((point) => point.atl), chartMax)} />
         </svg>
         <p className="chart-legend"><span className="ctl-key">CTL</span><span className="atl-key">ATL</span> · Last 28 days</p>
-        {trend.historyStartDate ? <p className="goal-help">Trend history starts {displayDate(trend.historyStartDate)} and builds from there; early values are limited by available history.</p> : null}
+        {trend.historyStartDate ? <p className="goal-help">Trend history starts {displayDate(trend.historyStartDate)} with CTL and ATL at zero, so early values read low until several weeks of Rides build up.</p> : null}
         <p className="load-caveat">These are relative load trends, not a readiness or performance score, and should not be read as training advice.</p>
       </> : <p>No power load trend yet. A Ride needs recorded average power and a dated FTP that applies on the Ride date.</p>}
       {trend.missingPowerRideCount || trend.missingFtpRideCount ? <p className="load-warning" role="status">

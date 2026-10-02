@@ -58,7 +58,7 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Create account' }).click()
-  await expect(page.getByRole('status')).toHaveText('Check your email to verify your account before signing in.')
+  await expect(page.getByText('Check your email to verify your account before signing in.')).toBeVisible()
 
   await page.goto(await waitForAuthEmail(email, 'signup'))
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
@@ -75,20 +75,20 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   await page.getByRole('button', { name: 'Forgot password?' }).click()
   await page.getByLabel('Email address').fill(email)
   await page.getByRole('button', { name: 'Send reset link' }).click()
-  await expect(page.getByRole('status')).toHaveText('If an account uses that email, a password reset link has been sent.')
+  await expect(page.getByText('If an account uses that email, a password reset link has been sent.')).toBeVisible()
   await page.goto(await waitForAuthEmail(email, 'recovery'))
   await expect(page.getByRole('heading', { name: 'Choose a new password' })).toBeVisible()
   const newPassword = 'CyclePro-test-456'
   await page.getByRole('textbox', { name: 'New password' }).fill(newPassword)
   await page.getByRole('button', { name: 'Update password' }).click()
-  await expect(page.getByText('Password updated. Sign in with your new password.')).toHaveText('Password updated. Sign in with your new password.')
+  await expect(page.getByText('Password updated. Sign in with your new password.')).toBeVisible()
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password').fill(newPassword)
   await page.getByRole('button', { name: 'Sign in' }).click()
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete account' }).click()
-  await expect(page.getByRole('status')).toHaveText('Your account and associated data have been deleted.')
+  await expect(page.getByText('Your account and associated data have been deleted.')).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
 })
 
@@ -109,7 +109,7 @@ test('Cyclist can create and edit one Primary active goal from a template', asyn
   await page.getByLabel('Goal name').fill('Coast to Coast 100')
   await page.getByLabel('Event date').fill('2027-06-12')
   await page.getByRole('button', { name: 'Save primary goal' }).click()
-  await expect(page.getByText('Coast to Coast 100')).toBeVisible()
+  await expect(page.getByRole('heading', { name: 'Coast to Coast 100' })).toBeVisible()
   await expect(page.getByText('Complete the event')).toBeVisible()
 
   await page.getByRole('button', { name: 'Edit goal' }).click()
@@ -367,6 +367,72 @@ test('Cyclist saves a Zwift event, sees it distinct on the calendar, and opens i
   await page.getByRole('button', { name: /Club race/ }).first().click()
   await expect(page.getByText('NOT COMPLETED')).toBeVisible()
   await expect(page.getByRole('link', { name: 'Open in Zwift' })).toHaveAttribute('href', 'https://www.zwift.com/events/view/1')
+  await expect(page.getByText('Associated with your Primary active goal.')).toBeVisible()
+
+  await page.getByRole('button', { name: 'Edit goal' }).click()
+  await page.getByLabel('Goal name').fill('Spring gran fondo')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByText('Linked to Primary active goal')).toHaveCount(0)
+  await expect(page.getByText('Saved for: Zwift goal')).toBeVisible()
+  await expect(page.getByText('Saved for an earlier goal: Zwift goal')).toBeVisible()
+})
+
+test('Ride import stores zero distance as missing and rejects out-of-range metrics', async () => {
+  const { url, anonKey, serviceKey } = localSupabaseSettings()
+  const email = `zero-metric-${Date.now()}@example.test`
+  const user = await createConfirmedUser(url, serviceKey, email, 'CyclePro-zero-456')
+  try {
+    const { access_token } = await signIn(url, anonKey, email, 'CyclePro-zero-456')
+    const ride = {
+      activity_name: 'Indoor trainer', started_at: '2026-09-01T06:00:00.000Z', duration_seconds: 3600, elapsed_seconds: 3600,
+      total_distance_meters: 0, total_ascent_meters: 0, average_power_watts: 200, max_power_watts: 400,
+      average_heart_rate: 140, max_heart_rate: 170, average_cadence: 90,
+    }
+    const importRide = (body: object) => fetch('http://127.0.0.1:8787/rides/import', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify(body),
+    })
+    const imported = await importRide({ file_sha256: 'c'.repeat(64), ride })
+    expect(imported.status).toBe(201)
+    expect((await imported.json() as { ride: { total_distance_meters: number | null } }).ride.total_distance_meters).toBeNull()
+
+    const tooPowerful = await importRide({ file_sha256: 'd'.repeat(64), ride: { ...ride, max_power_watts: 40_000 } })
+    expect(tooPowerful.status).toBe(400)
+    expect((await tooPowerful.json() as { error: string }).error).toMatch(/max power watts .* outside the supported range/)
+
+    const empty = await importRide({ file_sha256: 'e'.repeat(64), ride: { ...ride, duration_seconds: 0, average_power_watts: null, average_heart_rate: null } })
+    expect(empty.status).toBe(400)
+    expect((await empty.json() as { error: string }).error).toMatch(/no usable ride duration/)
+
+    const oversized = new ReadableStream({ start(controller) { controller.enqueue(new TextEncoder().encode(' '.repeat(70 * 1024))); controller.close() } })
+    const tooLarge = await fetch('http://127.0.0.1:8787/rides/import', {
+      method: 'POST',
+      headers: { authorization: `Bearer ${access_token}`, 'content-type': 'application/json' },
+      body: oversized,
+      duplex: 'half',
+    } as RequestInit)
+    expect(tooLarge.status).toBe(413)
+  } finally {
+    await fetch(`${url}/auth/v1/admin/users/${user.id}`, { method: 'DELETE', headers: { apikey: serviceKey, authorization: `Bearer ${serviceKey}` } })
+  }
+})
+
+test('today rolls over at local midnight without a reload', async ({ page }) => {
+  // Start just before the previous UTC midnight so session tokens never look expired and nothing else re-renders.
+  const now = new Date()
+  const midnight = Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate())
+  await page.clock.install({ time: midnight - 120_000 })
+  const email = `midnight-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-midnight-456')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await expect(page.getByLabel('FTP effective date')).toHaveValue(new Date(midnight - 86_400_000).toISOString().slice(0, 10))
+  await page.clock.fastForward(180_000)
+  await expect(page.getByLabel('FTP effective date')).toHaveValue(new Date(midnight).toISOString().slice(0, 10))
 })
 
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
@@ -488,6 +554,19 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
       })
       expect(await ownerListResponse.json()).toEqual([])
     }
+
+    const invalidTimezone = await fetch(`${url}/rest/v1/cyclists?id=eq.${first.id}`, {
+      method: 'PATCH',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ calendar_timezone: 'Not/AZone' }),
+    })
+    expect(invalidTimezone.ok).toBe(false)
+    const oversizedNotes = await fetch(`${url}/rest/v1/saved_zwift_options`, {
+      method: 'POST',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ cyclist_id: first.id, option_type: 'route', name: 'Long notes', option_date: '2026-08-12', route: 'Watopia', url: 'https://www.zwift.com/', notes: 'x'.repeat(1001) }),
+    })
+    expect(oversizedNotes.ok).toBe(false)
 
     const modification = await fetch(`${url}/rest/v1/cyclists?id=eq.${second.id}`, {
       method: 'PATCH',

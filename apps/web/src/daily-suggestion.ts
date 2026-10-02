@@ -16,10 +16,21 @@ export type DailySuggestionDraft = {
   explanation: string
 }
 
+export type FtpStatus = 'missing' | 'stale' | 'current'
+
+/** An FTP older than this is re-assessed before power-targeted workouts are suggested. */
+export const FTP_STALE_AFTER_DAYS = 84
+
+export function ftpStatus(latestSetOn: string | null, today: string): FtpStatus {
+  if (!latestSetOn) return 'missing'
+  const ageDays = (Date.parse(`${today}T00:00:00Z`) - Date.parse(`${latestSetOn}T00:00:00Z`)) / 86_400_000
+  return ageDays > FTP_STALE_AFTER_DAYS ? 'stale' : 'current'
+}
+
 export function buildDailySuggestion(
   goal: SuggestionGoal | null,
   load: TrainingLoadTrend,
-  ftpIsCurrent: boolean,
+  ftp: FtpStatus,
   recoveryScore: number | null,
   illnessOrInjury: boolean,
 ): { suggestion: DailySuggestionDraft | null; reason: string } {
@@ -29,13 +40,13 @@ export function buildDailySuggestion(
     suggestion: null,
     reason: 'Your recovery check-in is low. No workout or FTP assessment is suggested today; consider resting or choosing an easy activity yourself.',
   }
-  if (!ftpIsCurrent) return {
+  if (ftp !== 'current') return {
     suggestion: {
       suggestion_type: 'ftp-assessment',
       workout_type: 'Optional Zwift Ramp Test FTP assessment',
       duration_minutes: 30,
       intensity_target: 'Follow the Zwift Ramp Test steps; this is an assessment, not a training workout.',
-      explanation: `An FTP estimate is needed to explain power-based targets for your ${goal.name} goal. After testing, enter the estimated FTP and test date in FTP history. You can also use another FTP assessment method.`,
+      explanation: `${ftp === 'stale' ? `Your latest FTP is more than ${FTP_STALE_AFTER_DAYS / 7} weeks old, so a fresh estimate is needed` : 'An FTP estimate is needed'} to explain power-based targets for your ${goal.name} goal. After testing, enter the estimated FTP and test date in FTP history. You can also use another FTP assessment method.`,
     },
     reason: '',
   }

@@ -1,5 +1,6 @@
 import { Hono } from 'hono'
 import { cors } from 'hono/cors'
+import { isLikelyDuplicate } from './duplicates'
 
 type Bindings = {
   FRONTEND_ORIGIN?: string
@@ -70,31 +71,28 @@ async function getAuthenticatedCyclistId(supabaseUrl: string, anonKey: string, a
     : null
 }
 
+/** Reads at most maxBytes of the body, whatever content-length claims; null when the body is larger. */
+async function readLimitedText(request: Request, maxBytes: number) {
+  if (Number(request.headers.get('content-length') ?? 0) > maxBytes) return null
+  if (!request.body) return ''
+  const reader = request.body.getReader()
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > maxBytes) { await reader.cancel(); return null }
+    chunks.push(value)
+  }
+  const bytes = new Uint8Array(total)
+  let offset = 0
+  for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength }
+  return new TextDecoder().decode(bytes)
+}
+
 function authenticatedRestHeaders(anonKey: string, accessToken: string) {
   return { apikey: anonKey, authorization: `Bearer ${accessToken}`, 'content-type': 'application/json' }
-}
-
-function metricClose(first: number | null, second: number | null, tolerance: number) {
-  return first !== null && second !== null && Math.abs(first - second) <= Math.max(tolerance, Math.max(first, second) * 0.02)
-}
-
-function isLikelyDuplicate(candidate: {
-  started_at: string
-  duration_seconds: number | null
-  total_distance_meters: number | null
-}, previous: {
-  started_at: string
-  duration_seconds: number | null
-  total_distance_meters: number | null
-}) {
-  const startDifference = Math.abs(Date.parse(candidate.started_at) - Date.parse(previous.started_at))
-  if (!Number.isFinite(startDifference) || startDifference > 2 * 60 * 1000) return false
-  if (candidate.total_distance_meters !== null && previous.total_distance_meters !== null) {
-    return metricClose(candidate.total_distance_meters, previous.total_distance_meters, 100)
-      && (candidate.duration_seconds === null || previous.duration_seconds === null
-        || metricClose(candidate.duration_seconds, previous.duration_seconds, 120))
-  }
-  return metricClose(candidate.duration_seconds, previous.duration_seconds, 120)
 }
 
 app.post('/rides/import', async (context) => {
@@ -111,11 +109,11 @@ app.post('/rides/import', async (context) => {
   }
   if (!cyclistId) return context.json({ error: 'Your session is no longer valid.' }, 401)
 
-  const declaredLength = Number(context.req.header('content-length') ?? 0)
-  if (declaredLength > 64 * 1024) return context.json({ error: 'The parsed ride data is too large.' }, 413)
+  const bodyText = await readLimitedText(context.req.raw, 64 * 1024)
+  if (bodyText === null) return context.json({ error: 'The parsed ride data is too large.' }, 413)
 
   let body: unknown
-  try { body = await context.req.json() } catch {
+  try { body = JSON.parse(bodyText) } catch {
     return context.json({ error: 'The parsed ride data could not be read.' }, 400)
   }
   if (typeof body !== 'object' || body === null) {
@@ -132,14 +130,32 @@ app.post('/rides/import', async (context) => {
     return context.json({ error: 'The parsed ride data is invalid.' }, 400)
   }
   const candidateRecord = candidate as Record<string, unknown>
-  const metricNames = [
-    'duration_seconds', 'elapsed_seconds', 'total_distance_meters', 'total_ascent_meters',
-    'average_power_watts', 'max_power_watts', 'average_heart_rate', 'max_heart_rate', 'average_cadence',
-  ] as const
-  for (const name of metricNames) {
-    if (!(name in candidateRecord) || (candidateRecord[name] !== null && (typeof candidateRecord[name] !== 'number' || !Number.isFinite(candidateRecord[name]) || candidateRecord[name] < 0))) {
+  // Mirrors the rides table: zeroForMissing columns require > 0, so a recorded 0 (e.g. indoor distance) is stored as missing.
+  const metricLimits = {
+    duration_seconds: { max: 2_147_483_647, integer: true, zeroForMissing: true },
+    elapsed_seconds: { max: 2_147_483_647, integer: true, zeroForMissing: true },
+    total_distance_meters: { max: 9_999_999_999.99, integer: false, zeroForMissing: true },
+    total_ascent_meters: { max: 2_147_483_647, integer: true, zeroForMissing: false },
+    average_power_watts: { max: 32_767, integer: true, zeroForMissing: false },
+    max_power_watts: { max: 32_767, integer: true, zeroForMissing: false },
+    average_heart_rate: { max: 32_767, integer: true, zeroForMissing: false },
+    max_heart_rate: { max: 32_767, integer: true, zeroForMissing: false },
+    average_cadence: { max: 32_767, integer: true, zeroForMissing: false },
+  } as const
+  for (const [name, limit] of Object.entries(metricLimits)) {
+    const value = candidateRecord[name]
+    if (!(name in candidateRecord) || (value !== null && (typeof value !== 'number' || !Number.isFinite(value) || value < 0))) {
       return context.json({ error: 'The parsed ride data is invalid.' }, 400)
     }
+    if (value === null) continue
+    if (value > limit.max || (limit.integer && !Number.isInteger(value))) {
+      return context.json({ error: `The ride's ${name.replaceAll('_', ' ')} value is outside the supported range.` }, 400)
+    }
+    if (value === 0 && limit.zeroForMissing) candidateRecord[name] = null
+  }
+  if (candidateRecord.duration_seconds === null && candidateRecord.total_distance_meters === null
+    && candidateRecord.average_power_watts === null && candidateRecord.average_heart_rate === null) {
+    return context.json({ error: 'This FIT file has no usable ride duration, distance, or sensor measurements.' }, 400)
   }
   const importedRide = candidateRecord as unknown as ImportedRide
   const fileHash = importPayload.file_sha256
@@ -240,13 +256,23 @@ app.post('/auth/delete-account', async (context) => {
   if (!accessToken) return context.json({ error: 'Sign in to delete your account.' }, 401)
 
   const supabaseUrl = SUPABASE_URL.replace(/\/$/, '')
-  const cyclistId = await getAuthenticatedCyclistId(SUPABASE_URL.replace(/\/$/, ''), SUPABASE_ANON_KEY, accessToken)
+  let cyclistId: string | null
+  try {
+    cyclistId = await getAuthenticatedCyclistId(supabaseUrl, SUPABASE_ANON_KEY, accessToken)
+  } catch {
+    return context.json({ error: 'Could not verify your session. Please try again.' }, 502)
+  }
   if (!cyclistId) return context.json({ error: 'Your session is no longer valid.' }, 401)
 
-  const deletionResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(cyclistId)}`, {
-    method: 'DELETE',
-    headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
-  })
+  let deletionResponse: Response
+  try {
+    deletionResponse = await fetch(`${supabaseUrl}/auth/v1/admin/users/${encodeURIComponent(cyclistId)}`, {
+      method: 'DELETE',
+      headers: { apikey: SUPABASE_SERVICE_ROLE_KEY, authorization: `Bearer ${SUPABASE_SERVICE_ROLE_KEY}` },
+    })
+  } catch {
+    return context.json({ error: 'Account deletion failed. Please try again.' }, 502)
+  }
   if (!deletionResponse.ok) return context.json({ error: 'Account deletion failed. Please try again.' }, 502)
   return context.body(null, 204)
 })

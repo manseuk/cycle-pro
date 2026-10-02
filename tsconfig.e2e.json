@@ -6,7 +6,8 @@
     "strict": true,
     "noEmit": true,
     "skipLibCheck": true,
+    "allowImportingTsExtensions": true,
     "types": ["node"]
   },
-  "include": ["playwright.config.ts", "tests/e2e/**/*.ts"]
+  "include": ["playwright.config.ts", "tests/e2e/**/*.ts", "tests/unit/**/*.ts"]
 }

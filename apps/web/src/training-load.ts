@@ -1,4 +1,4 @@
-import { calendarDateKey } from './calendar-date'
+import { calendarDateKey } from './calendar-date.ts'
 
 export type LoadRide = {
   started_at: string

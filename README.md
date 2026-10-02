@@ -35,7 +35,9 @@ The `dev:apps` command reads the local connection values from `supabase status` 
 ## Checks
 
 ```sh
+pnpm lint
 pnpm typecheck
+pnpm test:unit
 pnpm test:e2e
 pnpm --filter @cycle-pro/web build
 ```
@@ -54,4 +56,6 @@ Configure the repository variable `API_BASE_URL` with the deployed Worker API ba
 
 Configure the repository variables `SUPABASE_URL`, `SUPABASE_ANON_KEY`, and `FRONTEND_ORIGIN` for the deployed Supabase project and Pages origin. `SUPABASE_ANON_KEY` is the public client key. These values are passed to Wrangler as Worker variables during deployment, so the health check verifies the configured Supabase Auth service.
 
-The local Wrangler config defaults to `https://cycle-pro.pages.dev`; CI deploys the `FRONTEND_ORIGIN` repository variable so the production API matches the configured Pages hostname. Supabase migration files are versioned under `supabase/migrations`; the main-branch deployment applies them before deploying the app. Local database contents are never deployed.
+The local Wrangler config sets `FRONTEND_ORIGIN` to `http://127.0.0.1:5173` (the Vite dev server); CI overrides it with the `FRONTEND_ORIGIN` repository variable so the production API only accepts the configured Pages hostname.
+
+In the production Supabase project, set the minimum password length to 8 (Authentication → Policies) to match the app and `supabase/config.toml`. Supabase migration files are versioned under `supabase/migrations`; the main-branch deployment applies them before deploying the app. If the app deploy then fails, the previous app keeps running against the new schema, so every migration must stay backward compatible with the currently deployed app (add columns and tables, backfill before adding constraints; remove or rename only in a later release). Local database contents are never deployed.

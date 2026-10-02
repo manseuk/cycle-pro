@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useState, type FormEvent } from 'react'
 import { createClient, type Session } from '@supabase/supabase-js'
-import { calendarDateKey } from './calendar-date'
+import { displayTimestamp } from './calendar-date'
 import { TrainingLoadSection } from './TrainingLoadSection'
 import { DailySuggestionSection } from './DailySuggestionSection'
 import { SavedZwiftOptionsSection, type ZwiftOption } from './SavedZwiftOptionsSection'
+import { TrainingCalendar, type PlannedSuggestion } from './TrainingCalendar'
 
 const supabaseUrl = import.meta.env.VITE_SUPABASE_URL
 const supabaseKey = import.meta.env.VITE_SUPABASE_ANON_KEY
@@ -52,17 +53,6 @@ type Ride = {
   possible_duplicate_of: string | null
 }
 type ImportResult = { fileName: string; message: string; rideId?: string; status: 'imported' | 'duplicate' | 'likely-duplicate' | 'error' }
-type PlannedSuggestion = { id: string; suggestion_date: string; workout_type: string; duration_minutes: number; intensity_target: string; explanation: string; suggestion_type: 'workout' | 'ftp-assessment'; status: 'accepted' }
-
-function dateLabel(dateKey: string, options: Intl.DateTimeFormatOptions = { weekday: 'long', month: 'long', day: 'numeric', year: 'numeric' }) {
-  return new Intl.DateTimeFormat(undefined, { ...options, timeZone: 'UTC' }).format(new Date(`${dateKey}T12:00:00Z`))
-}
-
-function shiftCalendarMonth(monthKey: string, amount: number) {
-  const month = new Date(`${monthKey}-01T00:00:00Z`)
-  month.setUTCMonth(month.getUTCMonth() + amount)
-  return `${month.getUTCFullYear()}-${String(month.getUTCMonth() + 1).padStart(2, '0')}`
-}
 
 const emptyGoalDraft: GoalDraft = {
   goalType: 'event', name: '', eventDate: '', finishMinutes: '',
@@ -94,58 +84,27 @@ function App() {
   const [editingRideNotes, setEditingRideNotes] = useState<string | null>(null)
   const [rideNotesDraft, setRideNotesDraft] = useState('')
   const [savingRide, setSavingRide] = useState(false)
-  const [calendarMonth, setCalendarMonth] = useState(() => calendarDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC').slice(0, 7))
-  const [selectedCalendarDate, setSelectedCalendarDate] = useState(() => calendarDateKey(new Date(), Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC'))
-  const [calendarView, setCalendarView] = useState<'month' | 'list'>(() => window.matchMedia('(max-width: 600px)').matches ? 'list' : 'month')
-  const [calendarRideId, setCalendarRideId] = useState<string | null>(null)
   const [plannedSuggestions, setPlannedSuggestions] = useState<PlannedSuggestion[]>([])
-  const [calendarSuggestionId, setCalendarSuggestionId] = useState<string | null>(null)
   const [zwiftOptions, setZwiftOptions] = useState<ZwiftOption[]>([])
-  const [calendarZwiftId, setCalendarZwiftId] = useState<string | null>(null)
   const [suggestionInputRevision, setSuggestionInputRevision] = useState(0)
-
-  const ridesByCalendarDate = new Map<string, Ride[]>()
-  for (const ride of rides) {
-    let dateKey: string
-    try { dateKey = calendarDateKey(new Date(ride.started_at), savedTimezone) } catch { continue }
-    ridesByCalendarDate.set(dateKey, [...(ridesByCalendarDate.get(dateKey) ?? []), ride])
-  }
-  const monthStart = new Date(`${calendarMonth}-01T00:00:00Z`)
-  const monthTitle = new Intl.DateTimeFormat(undefined, { month: 'long', year: 'numeric', timeZone: 'UTC' }).format(monthStart)
-  const firstGridDay = new Date(monthStart)
-  firstGridDay.setUTCDate(firstGridDay.getUTCDate() - firstGridDay.getUTCDay())
-  const calendarDays = Array.from({ length: 42 }, (_, index) => {
-    const day = new Date(firstGridDay)
-    day.setUTCDate(firstGridDay.getUTCDate() + index)
-    return `${day.getUTCFullYear()}-${String(day.getUTCMonth() + 1).padStart(2, '0')}-${String(day.getUTCDate()).padStart(2, '0')}`
-  })
-  const selectedDateRides = ridesByCalendarDate.get(selectedCalendarDate) ?? []
-  const selectedCalendarRide = rides.find((ride) => ride.id === calendarRideId) ?? null
-  const selectedCalendarSuggestion = plannedSuggestions.find((item) => item.id === calendarSuggestionId) ?? null
+  const userId = session?.user.id
+  const showTraining = Boolean(session) && mode !== 'new-password' && cyclistAccount === 'available'
 
   const refreshPlannedSuggestions = useCallback(() => {
-    if (!session || !supabase) { setPlannedSuggestions([]); return }
-    void supabase.from('workout_suggestions').select('id,suggestion_date,workout_type,duration_minutes,intensity_target,explanation,suggestion_type,status').eq('cyclist_id', session.user.id).eq('status', 'accepted').order('suggestion_date', { ascending: true }).then(({ data, error }) => {
+    if (!userId || !supabase) { setPlannedSuggestions([]); return }
+    void supabase.from('workout_suggestions').select('id,suggestion_date,workout_type,duration_minutes,intensity_target,explanation,suggestion_type,status').eq('cyclist_id', userId).eq('status', 'accepted').order('suggestion_date', { ascending: true }).then(({ data, error }) => {
       if (!error) setPlannedSuggestions((data ?? []) as PlannedSuggestion[])
     })
-  }, [session?.user.id])
+  }, [userId])
 
   const refreshZwiftOptions = useCallback(() => {
-    if (!session || !supabase) { setZwiftOptions([]); return }
-    void supabase.from('saved_zwift_options').select('id,option_type,name,option_date,option_time,route,url,notes,goal_id').eq('cyclist_id', session.user.id).order('option_date', { ascending: true }).then(({ data, error }) => {
+    if (!userId || !supabase) { setZwiftOptions([]); return }
+    void supabase.from('saved_zwift_options').select('id,option_type,name,option_date,option_time,route,url,notes,goal_id,goal_name').eq('cyclist_id', userId).order('option_date', { ascending: true }).then(({ data, error }) => {
       if (!error) setZwiftOptions((data ?? []) as ZwiftOption[])
     })
-  }, [session?.user.id])
+  }, [userId])
   useEffect(() => { refreshZwiftOptions() }, [refreshZwiftOptions])
 
-  const zwiftByCalendarDate = new Map<string, ZwiftOption[]>()
-  for (const option of zwiftOptions) zwiftByCalendarDate.set(option.option_date, [...(zwiftByCalendarDate.get(option.option_date) ?? []), option])
-  const selectedDateZwift = zwiftByCalendarDate.get(selectedCalendarDate) ?? []
-  const selectedCalendarZwift = zwiftOptions.find((option) => option.id === calendarZwiftId) ?? null
-  const plannedByCalendarDate = new Map<string, PlannedSuggestion[]>()
-  for (const planned of plannedSuggestions) plannedByCalendarDate.set(planned.suggestion_date, [...(plannedByCalendarDate.get(planned.suggestion_date) ?? []), planned])
-  const monthCalendarDates = [...new Set([...ridesByCalendarDate.keys(), ...plannedByCalendarDate.keys(), ...zwiftByCalendarDate.keys()])].filter((dateKey) => dateKey.startsWith(calendarMonth)).sort((first, second) => second.localeCompare(first))
-  const selectedDatePlans = plannedByCalendarDate.get(selectedCalendarDate) ?? []
 
   useEffect(() => {
     if (!supabase) { setReady(true); return }
@@ -164,7 +123,7 @@ function App() {
   }, [])
 
   useEffect(() => {
-    if (!session || !supabase) {
+    if (!userId || !supabase) {
       setCyclistAccount('loading')
       setSavedTimezone('UTC')
       return
@@ -177,18 +136,15 @@ function App() {
       if (!error && data) {
         setCalendarTimezone(data.calendar_timezone)
         setSavedTimezone(data.calendar_timezone)
-        const today = calendarDateKey(new Date(), data.calendar_timezone)
-        setSelectedCalendarDate(today)
-        setCalendarMonth(today.slice(0, 7))
       }
     })
     return () => { currentCyclist = false }
-  }, [session?.user.id])
+  }, [userId])
 
   useEffect(() => { refreshPlannedSuggestions() }, [refreshPlannedSuggestions])
 
   useEffect(() => {
-    if (!session || !supabase) {
+    if (!userId || !supabase) {
       setRides([])
       setRidesLoading(false)
       setSelectedFiles([])
@@ -199,17 +155,17 @@ function App() {
     let currentCyclist = true
     setRides([])
     setRidesLoading(true)
-    void supabase.from('rides').select('*').eq('cyclist_id', session.user.id).order('started_at', { ascending: false }).then(({ data, error }) => {
+    void supabase.from('rides').select('*').eq('cyclist_id', userId).order('started_at', { ascending: false }).then(({ data, error }) => {
       if (!currentCyclist) return
       if (error) setRideMessage('Your Rides could not be loaded. Please refresh the page.')
       else setRides((data ?? []) as Ride[])
       setRidesLoading(false)
     })
     return () => { currentCyclist = false }
-  }, [session?.user.id])
+  }, [userId])
 
   useEffect(() => {
-    if (!session || !supabase) {
+    if (!userId || !supabase) {
       setGoal(null)
       setGoalLoading(false)
       setEditingGoal(false)
@@ -219,7 +175,7 @@ function App() {
     setGoal(null)
     setGoalLoading(true)
     setGoalMessage('')
-    void supabase.from('training_goals').select('*').eq('cyclist_id', session.user.id).maybeSingle().then(({ data, error }) => {
+    void supabase.from('training_goals').select('*').eq('cyclist_id', userId).maybeSingle().then(({ data, error }) => {
       if (!currentCyclist) return
       if (error) {
         setGoal(null)
@@ -228,7 +184,7 @@ function App() {
       setGoalLoading(false)
     })
     return () => { currentCyclist = false }
-  }, [session?.user.id])
+  }, [userId])
 
   function startGoalEditor() {
     setGoalDraft(goal ? {
@@ -299,9 +255,6 @@ function App() {
     if (error) setTimezoneMessage('Your calendar time zone could not be saved.')
     else {
       setSavedTimezone(calendarTimezone)
-      const today = calendarDateKey(new Date(), calendarTimezone)
-      setSelectedCalendarDate(today)
-      setCalendarMonth(today.slice(0, 7))
       setTimezoneMessage('Calendar time zone saved.')
     }
     setSavingRide(false)
@@ -386,15 +339,9 @@ function App() {
     if (error) setRideMessage('This Ride could not be deleted. Please try again.')
     else {
       setRides((previous) => previous.filter((item) => item.id !== ride.id))
-      setCalendarRideId((previous) => previous === ride.id ? null : previous)
       setRideMessage('Ride deleted.')
     }
     setSavingRide(false)
-  }
-
-  function displayTimestamp(timestamp: string) {
-    try { return new Intl.DateTimeFormat(undefined, { dateStyle: 'medium', timeStyle: 'short', timeZone: savedTimezone }).format(new Date(timestamp)) }
-    catch { return new Date(timestamp).toLocaleString() }
   }
 
   async function submit(event: FormEvent<HTMLFormElement>) {
@@ -515,7 +462,7 @@ function App() {
         </form> : null}
         {goalMessage ? <p className="form-message" role="status">{goalMessage}</p> : null}
       </section> : null}
-      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <section className="goal-section" aria-labelledby="rides-heading">
+      {showTraining && session ? <section className="goal-section" aria-labelledby="rides-heading">
         <h2 id="rides-heading">Your rides</h2>
         <p>Import completed rides from FIT files. Each file is processed separately; uploads are discarded after parsing.</p>
         <form className="goal-form" onSubmit={(event) => void importRides(event)}>
@@ -534,7 +481,7 @@ function App() {
         </form>
         {rideMessage ? <p className="form-message" role="status">{rideMessage}</p> : null}
         {ridesLoading ? <p role="status">Loading rides…</p> : rides.length === 0 ? <p>No rides yet. Import a FIT file to get started.</p> : <div className="ride-list">{rides.map((ride) => <article className="goal-card" id={`ride-${ride.id}`} key={ride.id}>
-          <p className="goal-kind">{displayTimestamp(ride.started_at)}{ride.is_likely_duplicate ? ' · Possible duplicate — review this ride' : ''}</p>
+          <p className="goal-kind">{displayTimestamp(ride.started_at, savedTimezone)}{ride.is_likely_duplicate ? ' · Possible duplicate — review this ride' : ''}</p>
           <h3>{ride.activity_name}</h3>
           <dl className="ride-metrics">
             <div><dt>Moving time</dt><dd>{ride.duration_seconds === null ? 'Unavailable' : `${Math.round(ride.duration_seconds / 60)} min`}</dd></div>
@@ -552,107 +499,10 @@ function App() {
           <button className="danger-button" disabled={savingRide} onClick={() => void deleteRide(ride)}>Delete ride</button>
         </article>)}</div>}
       </section> : null}
-      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <TrainingLoadSection client={supabase} cyclistId={session.user.id} rides={rides} timeZone={savedTimezone} onRecoverySaved={() => setSuggestionInputRevision((revision) => revision + 1)} /> : null}
-      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <DailySuggestionSection client={supabase} cyclistId={session.user.id} goal={goal} rides={rides} timeZone={savedTimezone} onCalendarChanged={refreshPlannedSuggestions} inputRevision={suggestionInputRevision} /> : null}
-      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <SavedZwiftOptionsSection client={supabase} cyclistId={session.user.id} goalId={goal?.id ?? null} options={zwiftOptions} onChanged={refreshZwiftOptions} /> : null}
-      {session && mode !== 'new-password' && cyclistAccount === 'available' ? <section className="calendar-section" aria-labelledby="calendar-heading">
-        <div className="calendar-heading-row">
-          <div><p className="eyebrow">COMPLETED + PLANNED</p><h2 id="calendar-heading">Training calendar</h2></div>
-          <div className="calendar-view-switch" aria-label="Calendar view">
-            <button aria-pressed={calendarView === 'month'} onClick={() => setCalendarView('month')}>Month</button>
-            <button aria-pressed={calendarView === 'list'} onClick={() => setCalendarView('list')}>List</button>
-          </div>
-        </div>
-        <div className="calendar-toolbar">
-          <div className="calendar-month-controls">
-            <button aria-label="Previous month" onClick={() => setCalendarMonth((month) => shiftCalendarMonth(month, -1))}>‹</button>
-            <h3>{monthTitle}</h3>
-            <button aria-label="Next month" onClick={() => setCalendarMonth((month) => shiftCalendarMonth(month, 1))}>›</button>
-          </div>
-          <button className="calendar-today" onClick={() => {
-            const today = calendarDateKey(new Date(), savedTimezone)
-            setSelectedCalendarDate(today)
-            setCalendarMonth(today.slice(0, 7))
-          }}>Today</button>
-        </div>
-        {calendarView === 'month' ? <div className="calendar-month-view">
-          <div className="calendar-weekdays" aria-hidden="true">{['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'].map((day) => <span key={day}>{day}</span>)}</div>
-          <div className="calendar-grid">{calendarDays.map((dateKey) => {
-            const dayRides = ridesByCalendarDate.get(dateKey) ?? []
-            const dayPlans = plannedByCalendarDate.get(dateKey) ?? []
-            const dayZwift = zwiftByCalendarDate.get(dateKey) ?? []
-            const isCurrentMonth = dateKey.startsWith(calendarMonth)
-            return <button
-              className={`calendar-day${isCurrentMonth ? '' : ' calendar-day-outside'}${selectedCalendarDate === dateKey ? ' calendar-day-selected' : ''}`}
-              key={dateKey}
-              aria-label={`${dateLabel(dateKey)}, ${dayRides.length} completed ${dayRides.length === 1 ? 'ride' : 'rides'}, ${dayPlans.length} planned ${dayPlans.length === 1 ? 'workout' : 'workouts'}, ${dayZwift.length} saved Zwift ${dayZwift.length === 1 ? 'option' : 'options'}`}
-              aria-pressed={selectedCalendarDate === dateKey}
-              onClick={() => { setSelectedCalendarDate(dateKey); setCalendarMonth(dateKey.slice(0, 7)) }}
-            ><span className="calendar-day-number">{Number(dateKey.slice(-2))}</span>
-              {dayRides.length ? <span className="calendar-day-activity">{dayRides.length} {dayRides.length === 1 ? 'ride' : 'rides'}</span> : null}
-              {dayPlans.length ? <span className="calendar-day-planned">{dayPlans.length} planned</span> : null}
-              {dayZwift.length ? <span className="calendar-day-zwift">{dayZwift.length} Zwift</span> : null}
-            </button>
-          })}</div>
-        </div> : <div className="calendar-list-view">
-          {monthCalendarDates.length ? monthCalendarDates.map((dateKey) => <section className="calendar-list-day" key={dateKey}>
-            <button className="calendar-list-date" aria-pressed={selectedCalendarDate === dateKey} onClick={() => setSelectedCalendarDate(dateKey)}>{dateLabel(dateKey)}</button>
-            {(ridesByCalendarDate.get(dateKey) ?? []).map((ride) => <button className="calendar-ride-item" key={ride.id} onClick={() => { setSelectedCalendarDate(dateKey); setCalendarRideId(ride.id); setCalendarSuggestionId(null); setCalendarZwiftId(null) }}>
-              <span className="completed-ride-mark" aria-hidden="true">✓</span><span><strong>{ride.activity_name}</strong><small>Completed Ride · {displayTimestamp(ride.started_at)}</small></span>
-            </button>)}
-            {(plannedByCalendarDate.get(dateKey) ?? []).map((planned) => <button className="calendar-ride-item planned-item" key={planned.id} onClick={() => { setSelectedCalendarDate(dateKey); setCalendarSuggestionId(planned.id); setCalendarRideId(null); setCalendarZwiftId(null) }}>
-              <span className="planned-workout-mark" aria-hidden="true">↗</span><span><strong>{planned.workout_type}</strong><small>Planned workout · {planned.duration_minutes} min</small></span>
-            </button>)}
-            {(zwiftByCalendarDate.get(dateKey) ?? []).map((option) => <button className="calendar-ride-item zwift-item" key={option.id} onClick={() => { setSelectedCalendarDate(dateKey); setCalendarZwiftId(option.id); setCalendarRideId(null); setCalendarSuggestionId(null) }}>
-              <span className="zwift-mark" aria-hidden="true">Z</span><span><strong>{option.name}</strong><small>Saved Zwift {option.option_type}{option.option_time ? ` · ${option.option_time.slice(0, 5)}` : ''}</small></span>
-            </button>)}
-          </section>) : <p>No completed rides this month.</p>}
-        </div>}
-        <section className="calendar-selected-date" aria-labelledby="calendar-selected-date-heading">
-          <h3 id="calendar-selected-date-heading">{dateLabel(selectedCalendarDate)}</h3>
-          {selectedDateRides.length ? <ul>{selectedDateRides.map((ride) => <li key={ride.id}>
-            <button className="calendar-ride-item" onClick={() => { setCalendarRideId(ride.id); setCalendarSuggestionId(null); setCalendarZwiftId(null) }}>
-              <span className="completed-ride-mark" aria-hidden="true">✓</span><span><strong>{ride.activity_name}</strong><small>Completed Ride · {displayTimestamp(ride.started_at)}</small></span>
-            </button>
-          </li>)}</ul> : null}
-          {selectedDatePlans.length ? <ul aria-label="Planned workouts">{selectedDatePlans.map((planned) => <li key={planned.id}>
-            <button className="calendar-ride-item planned-item" onClick={() => { setCalendarSuggestionId(planned.id); setCalendarRideId(null); setCalendarZwiftId(null) }}>
-              <span className="planned-workout-mark" aria-hidden="true">↗</span><span><strong>{planned.workout_type}</strong><small>Planned workout · {planned.duration_minutes} min</small></span>
-            </button>
-          </li>)}</ul> : null}
-          {selectedDateZwift.length ? <ul aria-label="Saved Zwift options">{selectedDateZwift.map((option) => <li key={option.id}>
-            <button className="calendar-ride-item zwift-item" onClick={() => { setCalendarZwiftId(option.id); setCalendarRideId(null); setCalendarSuggestionId(null) }}>
-              <span className="zwift-mark" aria-hidden="true">Z</span><span><strong>{option.name}</strong><small>Saved Zwift {option.option_type}{option.option_time ? ` · ${option.option_time.slice(0, 5)}` : ''}</small></span>
-            </button>
-          </li>)}</ul> : null}
-          {!selectedDateRides.length && !selectedDatePlans.length && !selectedDateZwift.length ? <p>No completed Rides, planned workouts, or saved Zwift options on this date.</p> : null}
-        </section>
-        {selectedCalendarRide ? <section className="calendar-ride-detail" aria-labelledby="calendar-ride-detail-heading">
-          <div className="calendar-detail-heading"><div><p className="goal-kind">COMPLETED RIDE</p><h3 id="calendar-ride-detail-heading">{selectedCalendarRide.activity_name}</h3></div><button className="text-button" onClick={() => setCalendarRideId(null)}>Close details</button></div>
-          <p>{displayTimestamp(selectedCalendarRide.started_at)}</p>
-          <dl className="ride-metrics">
-            <div><dt>Moving time</dt><dd>{selectedCalendarRide.duration_seconds === null ? 'Unavailable' : `${Math.round(selectedCalendarRide.duration_seconds / 60)} min`}</dd></div>
-            <div><dt>Distance</dt><dd>{selectedCalendarRide.total_distance_meters === null ? 'Unavailable' : `${(selectedCalendarRide.total_distance_meters / 1000).toFixed(1)} km`}</dd></div>
-            <div><dt>Average power</dt><dd>{selectedCalendarRide.average_power_watts === null ? 'Unavailable' : `${selectedCalendarRide.average_power_watts} W`}</dd></div>
-            <div><dt>Average heart rate</dt><dd>{selectedCalendarRide.average_heart_rate === null ? 'Unavailable' : `${selectedCalendarRide.average_heart_rate} bpm`}</dd></div>
-          </dl>
-          <a href={`#ride-${selectedCalendarRide.id}`}>Open ride management details</a>
-        </section> : null}
-        {selectedCalendarSuggestion ? <section className="calendar-ride-detail planned-detail" aria-labelledby="calendar-planned-detail-heading">
-          <div className="calendar-detail-heading"><div><p className="goal-kind">ACCEPTED WORKOUT · PLANNED</p><h3 id="calendar-planned-detail-heading">{selectedCalendarSuggestion.workout_type}</h3></div><button className="text-button" onClick={() => setCalendarSuggestionId(null)}>Close details</button></div>
-          <p>{dateLabel(selectedCalendarSuggestion.suggestion_date)} · {selectedCalendarSuggestion.duration_minutes} minutes</p>
-          <p><strong>Intensity target:</strong> {selectedCalendarSuggestion.intensity_target}</p>
-          <p>{selectedCalendarSuggestion.explanation}</p>
-        </section> : null}
-        {selectedCalendarZwift ? <section className="calendar-ride-detail zwift-detail" aria-labelledby="calendar-zwift-detail-heading">
-          <div className="calendar-detail-heading"><div><p className="goal-kind">SAVED ZWIFT {selectedCalendarZwift.option_type.toUpperCase()} · NOT COMPLETED</p><h3 id="calendar-zwift-detail-heading">{selectedCalendarZwift.name}</h3></div><button className="text-button" onClick={() => setCalendarZwiftId(null)}>Close details</button></div>
-          <p>{dateLabel(selectedCalendarZwift.option_date)}{selectedCalendarZwift.option_time ? ` · ${selectedCalendarZwift.option_time.slice(0, 5)}` : ''}</p>
-          <p><strong>Route:</strong> {selectedCalendarZwift.route}</p>
-          {selectedCalendarZwift.goal_id && selectedCalendarZwift.goal_id === goal?.id ? <p>Associated with your Primary active goal.</p> : null}
-          {selectedCalendarZwift.notes ? <p>{selectedCalendarZwift.notes}</p> : null}
-          <a href={selectedCalendarZwift.url} target="_blank" rel="noopener noreferrer">Open in Zwift</a>
-        </section> : null}
-      </section> : null}
+      {showTraining && session ? <TrainingLoadSection client={supabase} cyclistId={session.user.id} rides={rides} timeZone={savedTimezone} onRecoverySaved={() => setSuggestionInputRevision((revision) => revision + 1)} /> : null}
+      {showTraining && session ? <DailySuggestionSection client={supabase} cyclistId={session.user.id} goal={goal} rides={rides} timeZone={savedTimezone} onCalendarChanged={refreshPlannedSuggestions} inputRevision={suggestionInputRevision} /> : null}
+      {showTraining && session ? <SavedZwiftOptionsSection client={supabase} cyclistId={session.user.id} goal={goal} options={zwiftOptions} onChanged={refreshZwiftOptions} /> : null}
+      {showTraining ? <TrainingCalendar key={savedTimezone} rides={rides} planned={plannedSuggestions} zwiftOptions={zwiftOptions} goal={goal} timeZone={savedTimezone} /> : null}
       {message ? <p className="form-message" role="status">{message}</p> : null}
     </section>
     <footer className="footer"><span>Made for the long ride.</span><span className="footer-mark">CYCLE PRO <span>·</span> ROAD CYCLING</span></footer>

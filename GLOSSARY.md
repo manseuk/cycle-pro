@@ -37,6 +37,9 @@ A longer-term weighted average of daily training stress, commonly calculated wit
 **Acute Training Load (ATL)**:
 A shorter-term weighted average of daily training stress, commonly calculated with a 7-day time constant. It describes a relative recent-load trend, not an absolute fatigue score.
 
+**Relative load**:
+The app's daily training-stress estimate: moving time (hours) × (average power ÷ FTP in effect that day)² × 100. It uses average power rather than normalized power, so variable rides such as races and intervals score lower than their physiological cost. CTL and ATL start from zero at the first scored Ride, so early trend values understate real load. Switching to normalized power is a possible follow-up, not current behaviour.
+
 **Training Stress Balance (TSB)**:
 The previous day's CTL minus ATL, describing the relative balance between longer-term and recent training load. It is not a standalone predictor of performance or readiness.
 
