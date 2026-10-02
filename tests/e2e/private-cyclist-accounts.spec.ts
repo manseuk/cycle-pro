@@ -1,4 +1,4 @@
-import { expect, test } from '@playwright/test'
+import { expect, test, type Page } from '@playwright/test'
 import { readFileSync } from 'node:fs'
 
 function localSupabaseSettings() {
@@ -27,6 +27,11 @@ async function signIn(url: string, anonKey: string, email: string, password: str
   })
   if (!response.ok) throw new Error(`Could not sign in isolation-test Cyclist: ${await response.text()}`)
   return await response.json() as { access_token: string }
+}
+
+// The signed-in landing page is Today; the account details live on their own page.
+async function openAccount(page: Page) {
+  await page.getByRole('banner').getByRole('link', { name: 'Account' }).click()
 }
 
 async function waitForAuthEmail(email: string, type: 'signup' | 'recovery') {
@@ -61,17 +66,19 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   await expect(page.getByText('Check your email to verify your account before signing in.')).toBeVisible()
 
   await page.goto(await waitForAuthEmail(email, 'signup'))
+  await openAccount(page)
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
   await expect(page.getByText(email)).toBeVisible()
   await expect(page.getByText('Your private Cyclist account is ready.')).toBeVisible()
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click()
   await expect(page.getByRole('heading', { name: 'Welcome back' })).toBeVisible()
 
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password').fill(password)
   await page.getByRole('button', { name: 'Sign in' }).click()
+  await openAccount(page)
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('main').getByRole('button', { name: 'Sign out' }).click()
   await page.getByRole('button', { name: 'Forgot password?' }).click()
   await page.getByLabel('Email address').fill(email)
   await page.getByRole('button', { name: 'Send reset link' }).click()
@@ -85,6 +92,7 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password').fill(newPassword)
   await page.getByRole('button', { name: 'Sign in' }).click()
+  await openAccount(page)
   await expect(page.getByRole('heading', { name: 'Your account' })).toBeVisible()
   page.once('dialog', (dialog) => dialog.accept())
   await page.getByRole('button', { name: 'Delete account' }).click()
@@ -318,7 +326,7 @@ test('Cyclist gets one explained workout, accepts it into the calendar, and illn
   await expect(page.getByText('Accepted · planned on your calendar')).toBeVisible()
   await expect(page.getByText('Planned workout · 60 min')).toBeVisible()
 
-  await page.getByRole('button', { name: 'Sign out' }).click()
+  await page.getByRole('banner').getByRole('button', { name: 'Sign out' }).click()
   const illEmail = `suggestion-ill-${Date.now()}@example.test`
   await page.getByRole('button', { name: 'Create an account' }).click()
   await page.getByLabel('Email address').fill(illEmail)

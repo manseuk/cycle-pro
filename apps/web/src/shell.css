@@ -1,0 +1,64 @@
+/* Signed-in shell: top bar with tabs on desktop, MENU button and full-screen dialog on phones. */
+.shell-top {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 56px;
+  border-bottom: 2px solid var(--line);
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.shell-brand { margin-right: auto; color: var(--ink); font-weight: 900; letter-spacing: 1px; text-decoration: none; }
+.shell-brand span { font-weight: 300; }
+.shell-tabs { display: none; gap: 4px; }
+.shell-tabs a { padding: 6px 12px; color: var(--ink); font-size: 13px; font-weight: 700; text-decoration: none; }
+.shell-tabs a[aria-current="page"] { background: var(--highlight); color: var(--on-highlight); }
+.shell-signout, .shell-menu-button, .shell-menu-close, .shell-menu-signout {
+  border: 2px solid var(--line);
+  background: none;
+  color: var(--ink);
+  font: 800 12px/1 var(--font-sans);
+  letter-spacing: 1.5px;
+  text-transform: uppercase;
+  cursor: pointer;
+}
+.shell-signout { display: none; padding: 7px 12px; }
+.shell-menu-button, .shell-menu-close { padding: 8px 12px; }
+
+.shell-menu {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  max-height: none;
+  margin: 0;
+  padding: 14px 18px;
+  border: 0;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+.shell-menu[open] { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.shell-menu-close { align-self: flex-end; }
+.shell-menu nav { display: grid; }
+.shell-menu nav a {
+  display: flex;
+  gap: 16px;
+  align-items: baseline;
+  padding: 12px 0;
+  border-bottom: 1px solid var(--mute);
+  color: var(--ink);
+  font-size: 34px;
+  font-weight: 900;
+  letter-spacing: -1px;
+  text-decoration: none;
+}
+.shell-menu nav a small { color: var(--mute); font-size: 12px; font-weight: 400; letter-spacing: 0; }
+.shell-menu nav a[aria-current="page"] { background: var(--highlight); color: var(--on-highlight); margin: 0 -8px; padding-left: 8px; }
+.shell-menu-signout { margin-top: 16px; align-self: flex-start; padding: 12px 16px; }
+
+@media (min-width: 900px) {
+  .shell-tabs { display: flex; }
+  .shell-signout { display: inline-block; }
+  .shell-menu-button { display: none; }
+}
