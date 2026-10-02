@@ -245,16 +245,19 @@ function App() {
   async function saveCalendarTimezone(event: FormEvent<HTMLFormElement>) {
     event.preventDefault()
     if (!supabase || !session) return
-    try { new Intl.DateTimeFormat(undefined, { timeZone: calendarTimezone }) } catch {
+    let timeZone: string
+    // Save the canonical name (e.g. europe/london → Europe/London); the database matches names exactly.
+    try { timeZone = new Intl.DateTimeFormat(undefined, { timeZone: calendarTimezone.trim() }).resolvedOptions().timeZone } catch {
       setTimezoneMessage('Enter a valid time zone, such as Europe/London.')
       return
     }
     setSavingRide(true)
     setTimezoneMessage('')
-    const { error } = await supabase.from('cyclists').update({ calendar_timezone: calendarTimezone }).eq('id', session.user.id)
-    if (error) setTimezoneMessage('Your calendar time zone could not be saved.')
+    const { error } = await supabase.from('cyclists').update({ calendar_timezone: timeZone }).eq('id', session.user.id)
+    if (error) setTimezoneMessage(error.code === '22023' ? 'Enter a named time zone, such as Europe/London; UTC offsets are not supported.' : 'Your calendar time zone could not be saved.')
     else {
-      setSavedTimezone(calendarTimezone)
+      setCalendarTimezone(timeZone)
+      setSavedTimezone(timeZone)
       setTimezoneMessage('Calendar time zone saved.')
     }
     setSavingRide(false)

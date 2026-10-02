@@ -136,9 +136,10 @@ test('Cyclist imports independent FIT files, sees duplicate outcomes, edits note
   await page.goto(await waitForAuthEmail(email, 'signup'))
   await expect(page.getByRole('heading', { name: 'Your rides' })).toBeVisible()
 
-  await page.getByLabel('Calendar time zone').fill('Europe/London')
+  await page.getByLabel('Calendar time zone').fill('europe/london')
   await page.getByRole('button', { name: 'Save time zone' }).click()
   await expect(page.getByText('Calendar time zone saved.')).toBeVisible()
+  await expect(page.getByText('Currently saved: Europe/London.')).toBeVisible()
 
   const input = page.getByLabel('FIT files')
   await input.setInputFiles([
@@ -554,6 +555,14 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
       })
       expect(await ownerListResponse.json()).toEqual([])
     }
+
+    const legacyLinkedOption = await fetch(`${url}/rest/v1/saved_zwift_options`, {
+      method: 'POST',
+      headers: { apikey: anonKey, authorization: `Bearer ${firstSession.access_token}`, 'content-type': 'application/json', prefer: 'return=representation' },
+      body: JSON.stringify({ cyclist_id: first.id, option_type: 'route', name: 'Saved by the previous app', option_date: '2026-08-12', route: 'Watopia', url: 'https://www.zwift.com/', goal_id: privateGoal.id }),
+    })
+    expect(legacyLinkedOption.ok).toBe(true)
+    expect((await legacyLinkedOption.json() as Array<{ goal_name: string }>)[0].goal_name).toBe('Private event goal')
 
     const invalidTimezone = await fetch(`${url}/rest/v1/cyclists?id=eq.${first.id}`, {
       method: 'PATCH',

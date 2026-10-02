@@ -13,3 +13,4 @@ Status: ready-for-human
 ## Comments
 
 - 2026-10-02: Decision (user): snapshot the goal name. Saving a linked option stores `goal_name`; it shows as linked only while the current goal has the same id and name. Otherwise it shows "Saved for an earlier goal: <name>". Editing the goal's name therefore counts as a new goal; other edits (date, finish time) keep the link. The migration backfills existing links from the current goal name. The check is `goal_id is null or goal_name is not null`, so the `on delete set null` foreign key and account deletion still work (verified). Extended the Zwift e2e journey.
+- 2026-10-02 (code review): The new constraint rejected goal-linked saves from the previously deployed app, which only sends `goal_id`. That broke the backward-compatibility rule between the migration and the app deploy. Added a trigger that fills `goal_name` from the linked goal when it's missing; covered by a direct-API e2e assertion.
