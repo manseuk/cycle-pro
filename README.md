@@ -4,7 +4,7 @@ A browser-based training companion for road cyclists.
 
 ## Requirements
 
-- Node.js 22.12 or newer (the repository pins 22.12.0 in `.nvmrc`)
+- Node.js 22.18 or newer (the repository pins 22.18.0 in `.nvmrc`)
 - pnpm 12.4.2
 - Docker-compatible container runtime for the local Supabase stack
 - Cloudflare and Supabase accounts for deployment
