@@ -81,7 +81,7 @@ test('Cyclist verifies an email, signs in, and can recover a password', async ({
   const newPassword = 'CyclePro-test-456'
   await page.getByRole('textbox', { name: 'New password' }).fill(newPassword)
   await page.getByRole('button', { name: 'Update password' }).click()
-  await expect(page.getByRole('status')).toHaveText('Password updated. Sign in with your new password.')
+  await expect(page.getByText('Password updated. Sign in with your new password.')).toHaveText('Password updated. Sign in with your new password.')
   await page.getByLabel('Email address').fill(email)
   await page.getByLabel('Password').fill(newPassword)
   await page.getByRole('button', { name: 'Sign in' }).click()
@@ -279,7 +279,7 @@ test('Cyclist waits for a goal, then can skip the optional FTP setup assessment'
   await expect(page.getByText(/record an FTP from another assessment method/)).toBeVisible()
   await page.getByRole('button', { name: 'Skip today' }).click()
   await expect(page.getByText('Skipped · not added to your calendar')).toBeVisible()
-  await expect(page.getByText(/No completed Rides or planned workouts on this date/)).toBeVisible()
+  await expect(page.getByText(/No completed Rides, planned workouts, or saved Zwift options on this date/)).toBeVisible()
   await page.reload()
   await expect(page.getByText('Skipped · not added to your calendar')).toBeVisible()
   await expect(page.getByLabel('FTP in watts')).toBeVisible()
@@ -333,6 +333,40 @@ test('Cyclist gets one explained workout, accepts it into the calendar, and illn
   await page.getByRole('button', { name: 'Save primary goal' }).click()
   await expect(page.getByText(/Workout intensity and the FTP assessment are withheld today/)).toBeVisible()
   await expect(page.getByRole('heading', { name: 'Optional Zwift Ramp Test FTP assessment' })).toHaveCount(0)
+})
+
+test('Cyclist saves a Zwift event, sees it distinct on the calendar, and opens its link', async ({ page }) => {
+  const email = `zwift-options-${Date.now()}@example.test`
+  await page.goto('/')
+  await page.getByRole('button', { name: 'Create an account' }).click()
+  await page.getByLabel('Email address').fill(email)
+  await page.getByLabel('Password').fill('CyclePro-zwift-456')
+  await page.getByRole('button', { name: 'Create account' }).click()
+  await page.goto(await waitForAuthEmail(email, 'signup'))
+  await page.getByRole('button', { name: 'Set a goal' }).click()
+  await page.getByLabel('Goal name').fill('Zwift goal')
+  await page.getByLabel('Event date').fill('2027-06-12')
+  await page.getByRole('button', { name: 'Save primary goal' }).click()
+  await expect(page.getByText('Primary active goal ·')).toBeVisible()
+
+  await page.getByLabel('Zwift option name').fill('Club race')
+  await page.getByLabel('Zwift option date').fill('2026-11-10')
+  await page.getByLabel('Zwift route').fill('Watopia Flat')
+  await page.getByLabel('Zwift link').fill('https://www.zwift.com/events/view/1')
+  await page.getByLabel('Associate with my Primary active goal').check()
+  await page.getByRole('button', { name: 'Save Zwift option' }).click()
+  await expect(page.getByText('Linked to Primary active goal')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open Club race in Zwift' })).toHaveAttribute('href', 'https://www.zwift.com/events/view/1')
+
+  await page.reload()
+  await page.getByRole('button', { name: 'List' }).click()
+  for (let i = 0; i < 12; i++) {
+    if (await page.getByRole('button', { name: /Club race/ }).count()) break
+    await page.getByRole('button', { name: 'Next month' }).click()
+  }
+  await page.getByRole('button', { name: /Club race/ }).first().click()
+  await expect(page.getByText('NOT COMPLETED')).toBeVisible()
+  await expect(page.getByRole('link', { name: 'Open in Zwift' })).toHaveAttribute('href', 'https://www.zwift.com/events/view/1')
 })
 
 test('signed-out Cyclists are asked to sign in before accessing their account', async ({ page }) => {
@@ -440,6 +474,7 @@ test('Cyclists cannot read or modify another Cyclist account record', async () =
     for (const [table, values] of [
       ['ftp_records', { ftp_watts: 250, set_on: '2026-08-01' }],
       ['daily_recovery_checkins', { checkin_date: '2026-08-12', perceived_recovery: 2, illness_or_injury: true }],
+      ['saved_zwift_options', { option_type: 'route', name: 'Private route', option_date: '2026-08-12', route: 'Watopia', url: 'https://www.zwift.com/' }],
       ['workout_suggestions', { suggestion_date: '2026-08-12', suggestion_type: 'workout', workout_type: 'Private planned ride', duration_minutes: 60, intensity_target: 'Easy', explanation: 'Private goal and load explanation.', status: 'accepted' }],
     ] as const) {
       const createResponse = await fetch(`${url}/rest/v1/${table}`, {

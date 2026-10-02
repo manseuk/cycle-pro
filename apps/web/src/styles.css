@@ -259,3 +259,6 @@ h1 {
   .calendar-list-day { padding: 10px; }
   .load-values { grid-template-columns: 1fr; }
 }
+.calendar-day-zwift { display: block; margin-top: 3px; color: #3d4f8a; font-size: 10px; }
+.zwift-item, .zwift-detail { border-color: #b9c3e6; background: #f4f6fd; }
+.zwift-mark { display: grid; width: 25px; height: 25px; place-items: center; border: 1px dashed #5a6cb0; border-radius: 4px; color: #3d4f8a; font-size: 13px; font-weight: 700; }
