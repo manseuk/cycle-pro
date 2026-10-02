@@ -1,0 +1,16 @@
+/* Design tokens. Palette comes from the variant B prototype (branch prototype/visual-direction); dark values arrive with the theme slice. */
+:root {
+  --bg: #fafaf7;
+  --surface: #fafaf7;
+  --ink: #111111;
+  --mute: #66665f;
+  --line: #111111;
+  --accent: #111111;
+  --on: #d4ff3a;
+  --highlight: #d4ff3a;
+  --on-highlight: #111111;
+  --c1: #111111;
+  --c2: #d46a00;
+  --c3: #5b3df5;
+  --font-sans: "Helvetica Neue", Arial, sans-serif;
+}
