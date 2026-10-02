@@ -1,4 +1,4 @@
-Status: ready-for-agent
+Status: ready-for-human
 
 # Cycling Coach MVP
 
@@ -121,3 +121,7 @@ Build a browser-based training companion for road cyclists. Cyclists create a pr
 - Product decisions and supporting research are recorded in the adjacent MVP specification, decision tickets, and research reports. This spec consolidates those decisions as the implementation contract.
 - Do not invent universal CTL, ATL, TSB, or readiness thresholds. Training-load initialization, minimum history, workout catalog, duplicate heuristics, and retained FIT fields remain explicit implementation details that need validation.
 - Cloudflare Free is a plausible POC host, but FIT parsing must be measured against the Worker CPU limit. Supabase Free project inactivity and database quota also need to be considered during operation.
+
+## Comments
+
+- 2026-10-02: All user stories are delivered by tickets 12–19 (plus the review fixes in `.scratch/review-fixes/`). The remaining POC measurements are recorded in `docs/adr/0001-client-parsed-fit-import.md`. A real 1 MB, 3.5 h ride parses in 60–96 ms, which is over the Workers Free 10 ms CPU limit, so FIT parsing stays in the browser. A stored Ride costs about 520 bytes including indexes, roughly 1 million Rides in Supabase Free's 500 MB. Import outcomes (complete, partial, invalid, exact and likely duplicates) and the narrow-screen list calendar are covered by the e2e suite. Duplicate classification, time-zone dating, load calculations, and recommendation rules are covered by unit tests.
