@@ -1,0 +1,17 @@
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cycle-pro
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/manseuk/cycle-pro.git
+    targetRevision: feat/argocd-local-deploy # change to main once merged
+    path: deploy/k8s
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cycle-pro
+  syncPolicy:
+    automated: { prune: true, selfHeal: true }
+    syncOptions: [CreateNamespace=true]
